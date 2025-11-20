@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
 FROM node:20-slim AS base
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production \
     APP_MODE=server
@@ -26,4 +29,5 @@ COPY migrations ./migrations
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 EXPOSE 4000
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["./docker-entrypoint.sh"]
