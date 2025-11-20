@@ -51,26 +51,10 @@ function resolveDbPath() {
   return resolved;
 }
 
-function ensureTweetsTable(db: SqliteDatabase) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tweets (
-      id TEXT PRIMARY KEY,
-      text TEXT NOT NULL,
-      quote TEXT NOT NULL,
-      url TEXT NOT NULL,
-      approved INTEGER NOT NULL DEFAULT 0,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_tweets_id ON tweets(id);
-  `);
-}
-
 function createTweetStore() {
   const dbPath = resolveDbPath();
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
-  ensureTweetsTable(db);
 
   const upsert = db.prepare(
     `INSERT INTO tweets (id, text, quote, url, approved)

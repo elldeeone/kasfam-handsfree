@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS tweets (
   quote TEXT NOT NULL,
   url TEXT NOT NULL,
   approved INTEGER NOT NULL DEFAULT 0,
-  createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+  createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+ humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED'))
 );
 
 -- Ensure id remains unique even if table definition changes
