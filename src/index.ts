@@ -58,8 +58,11 @@ async function main() {
     store = createTweetStore();
     const tweets = await getKaspaTweets();
 
-    for (let tweet of tweets) {
+    for (let i = 0; i < tweets.length; i++) {
+      const tweet = tweets[i];
+      console.info(`Reading tweet ${i}`);
       console.info(`\nSending question to GPT-5.1...`);
+      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
       const { quote, approved } = await ask(tweet.text);
 
       const payload: TweetDecisionInput = {
