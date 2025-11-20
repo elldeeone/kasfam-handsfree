@@ -53,4 +53,18 @@ npm run migrate
 npm run migrate -- ./data/moderation.db
 ```
 
-By default the script writes to `data/app.db`. All `.sql` files inside `migrations/` are executed in order, creating the `tweets` table with `id`, `text`, `url`, `approved`, and `createdAt` columns (`id` remains unique via the primary key and index).
+By default the script writes to `data/app.db`. All `.sql` files inside `migrations/` are executed in order, creating the `tweets` table with `id`, `text`, `quote`, `url`, `approved`, `createdAt`, and `humanDecision` columns (`id` remains unique via the primary key and index).
+
+## Moderation dashboard
+
+Review stored tweets and adjust the human decision field via the built-in web UI:
+
+```bash
+# optional overrides
+export SQLITE_DB_PATH=./data/app.db
+export PORT=4000
+
+npm run web
+```
+
+Then visit `http://localhost:4000`. Use the filter controls to narrow results by the model's `approved` status or by the `humanDecision` column (Approved, Rejected, or Unset). Each row exposes a dropdown that lets you set the human decision to `APPROVED` or `REJECTED`; changes persist immediately to the SQLite database.

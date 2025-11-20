@@ -1,8 +1,6 @@
-import Database, { Database as SqliteDatabase } from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
 import OpenAI from "openai";
 import { prompt as systemPrompt } from "./prompt.js";
+import { createTweetStore, type TweetDecisionInput } from "./tweetStore.js";
 
 const openAiClient = new OpenAI({ apiKey: assertApiKey() });
 
@@ -39,46 +37,6 @@ type Tweet = {
   url: string;
 };
 
-type TweetDecision = Tweet & {
-  quote: string;
-  approved: boolean;
-};
-
-function resolveDbPath() {
-  const inputPath = process.env.SQLITE_DB_PATH || "data/app.db";
-  const resolved = path.resolve(inputPath);
-  mkdirSync(path.dirname(resolved), { recursive: true });
-  return resolved;
-}
-
-function createTweetStore() {
-  const dbPath = resolveDbPath();
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-
-  const upsert = db.prepare(
-    `INSERT INTO tweets (id, text, quote, url, approved)
-     VALUES (@id, @text, @quote, @url, @approved)
-     ON CONFLICT(id) DO UPDATE SET
-       text = excluded.text,
-       quote = excluded.quote,
-       url = excluded.url,
-       approved = excluded.approved`
-  );
-
-  return {
-    save(decision: TweetDecision) {
-      upsert.run({
-        ...decision,
-        approved: decision.approved ? 1 : 0,
-      });
-    },
-    close() {
-      db.close();
-    },
-  };
-}
-
 type TweetStore = ReturnType<typeof createTweetStore>;
 
 async function getKaspaTweets(): Promise<Tweet[]> {
@@ -104,11 +62,13 @@ async function main() {
       console.info(`\nSending question to GPT-5.1...`);
       const { quote, approved } = await ask(tweet.text);
 
-      store.save({
+      const payload: TweetDecisionInput = {
         ...tweet,
         quote: quote ?? "",
         approved,
-      });
+      };
+
+      store.save(payload);
 
       if (!approved) {
         continue;
