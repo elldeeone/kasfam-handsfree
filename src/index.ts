@@ -21,6 +21,9 @@ async function ask(
       { role: "system", content: systemPrompt },
       { role: "user", content: question },
     ],
+    reasoning:{
+      effort: "high",
+    }
   });
 
   const quote = response.output_text?.trim();
