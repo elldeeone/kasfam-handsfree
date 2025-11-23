@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       SQLITE_DB_PATH: /data/app.db
       PORT: "4000"
       APP_MODE: server

@@ -7,6 +7,7 @@ import {
 } from "./tweetStore.js";
 
 const PORT = Number(process.env.PORT) || 4000;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const app = express();
 const store = createTweetStore();
 
@@ -21,10 +22,19 @@ app.get("/", (req, res) => {
 });
 
 app.post("/tweets/:id/human-decision", (req, res) => {
-  const { decision, redirect } = req.body as {
+  const { decision, redirect, password } = req.body as {
     decision?: string;
     redirect?: string;
+    password?: string;
   };
+
+  console.log("Received POST request with body:", req.body);
+  console.log("ADMIN_PASSWORD:", ADMIN_PASSWORD);
+  console.log("password:", password); 
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    console.log("Unauthorized: Invalid or missing password.");
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
 
   const normalized = normalizeDecision(decision);
   if (!normalized) {
@@ -140,6 +150,13 @@ function renderPage(
     <button type="submit">Apply Filters</button>
   </form>
 
+  <div style="margin-top: 1rem;">
+    <label>
+      Admin Password:
+      <input type="password" id="admin-password" placeholder="Enter password" />
+    </label>
+  </div>
+
   <table>
     <thead>
       <tr>
@@ -156,6 +173,38 @@ function renderPage(
       ${tweets.map((tweet) => renderRow(tweet, redirectTarget)).join("")}
     </tbody>
   </table>
+
+  <script>
+    (function() {
+      const passwordInput = document.getElementById('admin-password');
+      
+      // Load from local storage
+      const saved = localStorage.getItem('kasfam_admin_password');
+      if (saved) {
+        passwordInput.value = saved;
+        document.querySelectorAll('.hidden-password').forEach(el => {
+          el.value = saved;
+        });
+      }
+
+      // Save to local storage and update hidden fields
+      passwordInput.addEventListener('input', (e) => {
+        const val = e.target.value;
+        localStorage.setItem('kasfam_admin_password', val);
+        document.querySelectorAll('.hidden-password').forEach(el => {
+          el.value = val;
+        });
+      });
+
+      // Ensure the password sent is always the one in the input (safety net)
+      document.querySelectorAll('.decision-form').forEach(form => {
+        form.addEventListener('submit', () => {
+          const hidden = form.querySelector('.hidden-password');
+          hidden.value = passwordInput.value;
+        });
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -188,6 +237,7 @@ function renderRow(tweet: TweetRecord, redirect: string) {
         <input type="hidden" name="redirect" value="${escapeAttribute(
           redirect
         )}" />
+        <input type="hidden" name="password" class="hidden-password" />
         <button type="submit">Save</button>
       </form>
     </td>
