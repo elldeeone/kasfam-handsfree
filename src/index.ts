@@ -52,6 +52,10 @@ async function getKaspaTweets(): Promise<Tweet[]> {
   return response.tweets ?? [];
 }
 
+function log(msg: string) {
+  console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
+}
+
 async function main() {
   let store: TweetStore | null = null;
   try {
@@ -60,14 +64,14 @@ async function main() {
 
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i];
-      console.info(`Reading tweet ${i + 1} of ${tweets.length}`);
+      log(`Reading tweet ${i + 1} of ${tweets.length}`);
 
       if (store.has(tweet.id)) {
-        console.info(`Skipping tweet ${tweet.id} (already exists)`);
+        log(`Skipping tweet ${tweet.id} (already exists)`);
         continue;
       }
 
-      console.info(`\nSending question to GPT-5.1...`);
+      log(`Sending question to GPT-5.1...`);
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
       const { quote, approved } = await ask(tweet.text);
 
@@ -83,9 +87,9 @@ async function main() {
         continue;
       }
 
-      console.info(`Question: ${tweet.text}`);
+      log(`Question: ${tweet.text}`);
 
-      console.log(`Approved status: ${approved}`);
+      log(`Approved status: ${approved}`);
 
       if (!quote) {
         console.warn("No textual output returned by the model.");
@@ -93,8 +97,8 @@ async function main() {
         return;
       }
 
-      console.log("\n=== GPT-5.1 Response ===\n");
-      console.log(quote);
+      log("=== GPT-5.1 Response ===");
+      log(quote);
     }
   } catch (error) {
     if (error instanceof Error) {
