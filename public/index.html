@@ -44,6 +44,7 @@
         <th>Tweet</th>
         <th>Quote</th>
         <th>URL</th>
+        <th>Human Decision</th>
         <th>Created</th>
       </tr>
     </thead>
@@ -61,7 +62,7 @@
 
     async function fetchTweets() {
       loadingIndicator.style.display = 'inline';
-      tweetsBody.innerHTML = '<tr><td colspan="5" style="text-align:center">Loading...</td></tr>';
+      tweetsBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading...</td></tr>';
       
       const params = new URLSearchParams();
       if (filterHuman.value !== 'all') params.append('humanDecision', filterHuman.value);
@@ -73,7 +74,7 @@
         renderTweets(tweets);
       } catch (err) {
         console.error(err);
-        tweetsBody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
+        tweetsBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
       } finally {
         loadingIndicator.style.display = 'none';
       }
@@ -81,7 +82,7 @@
 
     function renderTweets(tweets) {
       if (tweets.length === 0) {
-        tweetsBody.innerHTML = '<tr><td colspan="5" style="text-align:center">No tweets found</td></tr>';
+        tweetsBody.innerHTML = '<tr><td colspan="6" style="text-align:center">No tweets found</td></tr>';
         return;
       }
 
@@ -92,6 +93,7 @@
             <td>${escapeHtml(tweet.text)}</td>
             <td class="quote">${escapeHtml(tweet.quote)}</td>
             <td><a href="${escapeHtml(tweet.url)}" target="_blank" rel="noreferrer">link</a></td>
+            <td>${tweet.humanDecision || 'UNSET'}</td>
             <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
           </tr>
         `;
