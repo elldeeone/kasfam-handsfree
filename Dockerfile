@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/*
@@ -26,6 +26,7 @@ COPY package*.json ./
 COPY --from=build /app/dist ./dist
 COPY scripts ./scripts
 COPY migrations ./migrations
+COPY public ./public
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 EXPOSE 4000
