@@ -12,7 +12,7 @@ type Tweet = {
 
 type TweetStore = ReturnType<typeof createTweetStore>;
 
-async function getKaspaTweets(limit?: number): Promise<Tweet[]> {
+async function getKaspaTweets(limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
   const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
     headers: { Accept: "application/json" },
   });
@@ -24,7 +24,20 @@ async function getKaspaTweets(limit?: number): Promise<Tweet[]> {
   const response = await res.json();
   const allTweets = response.tweets ?? [];
 
-  // Apply client-side limiting if specified
+  // filter by tweet ids if specified
+  if (tweetIds !== undefined && tweetIds.length > 0) {
+    const tweets = allTweets.filter((t: Tweet) => tweetIds.includes(t.id));
+    const foundIds = tweets.map((t: Tweet) => t.id);
+    const notFoundIds = tweetIds.filter(id => !foundIds.includes(id));
+
+    if (notFoundIds.length > 0) {
+      throw new Error(`Tweet ID(s) not found: ${notFoundIds.join(', ')}`);
+    }
+
+    return tweets;
+  }
+
+  // apply client-side limiting if specified
   if (limit !== undefined && limit > 0) {
     return allTweets.slice(0, limit);
   }
@@ -38,11 +51,13 @@ function log(msg: string) {
 
 type ParsedArgs = {
   limit: number | undefined;
+  tweetIds: string[] | undefined;
 };
 
 function extractArguments(args: string[]): ParsedArgs {
   // how many tweets to send through to gpt for 'processing', default to no limit (all tweets)
   let limit: number | undefined = undefined;
+  let tweetIds: string[] | undefined = undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--limit') {
@@ -50,6 +65,13 @@ function extractArguments(args: string[]): ParsedArgs {
         throw new Error('--limit requires a value');
       }
       limit = parseInt(args[i + 1], 10);
+      i++;
+    } else if (args[i] === '--tweet-id') {
+      if (i + 1 >= args.length) {
+        throw new Error('--tweet-id requires a value');
+      }
+
+      tweetIds = args[i + 1].split(',').map(id => id.trim()).filter(id => id.length > 0);
       i++;
     } else if (args[i].startsWith('--')) {
       throw new Error(`Unknown argument: ${args[i]}`);
@@ -59,7 +81,7 @@ function extractArguments(args: string[]): ParsedArgs {
     }
   }
 
-  return { limit };
+  return { limit, tweetIds };
 }
 
 function validateArguments(parsed: ParsedArgs): void {
@@ -67,6 +89,22 @@ function validateArguments(parsed: ParsedArgs): void {
     if (isNaN(parsed.limit) || parsed.limit <= 0) {
       throw new Error(`Invalid --limit value: must be a positive integer, got ${parsed.limit}`);
     }
+  }
+
+  if (parsed.tweetIds !== undefined) {
+    if (parsed.tweetIds.length === 0) {
+      throw new Error('--tweet-id cannot be empty');
+    }
+    for (const id of parsed.tweetIds) {
+      if (id.trim() === '') {
+        throw new Error('--tweet-id contains empty values');
+      }
+    }
+  }
+
+  // warn if both limit and tweetIds are provided (tweetIds takes precedence)
+  if (parsed.limit !== undefined && parsed.tweetIds !== undefined) {
+    console.warn('Warning: both --limit and --tweet-id provided. --tweet-id takes precedence, --limit will be ignored.');
   }
 }
 
@@ -78,12 +116,12 @@ function parseArgs(): ParsedArgs {
 }
 
 async function main() {
-  const { limit } = parseArgs();
+  const { limit, tweetIds } = parseArgs();
 
   let store: TweetStore | null = null;
   try {
     store = createTweetStore();
-    const tweets = await getKaspaTweets(limit);
+    const tweets = await getKaspaTweets(limit, tweetIds);
 
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i];
