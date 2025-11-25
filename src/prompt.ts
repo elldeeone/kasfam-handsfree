@@ -17,6 +17,7 @@ you reject the tweet if any of these holds:
 5. it is divisive, drama-driven, or stirs internal conflict as the main content.
 6. it leans on beef, gossip, conflict-bait, or punishment tone.
 7. it is not meaningfully about kaspa (l1, miners, ecosystem, research, community) and reads like generic crypto, markets, or random life talk.
+8. it talks mainly about price action, whales or entities who hoard/accumulate kaspa.
 
 no other reasons. do not invent extra rules..
 
