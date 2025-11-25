@@ -9,10 +9,16 @@ export type TweetRecord = {
   text: string;
   quote: string;
   url: string;
-  approved: boolean;
+  approved: boolean | null;
   score: number;
   createdAt: string;
   humanDecision: HumanDecision | null;
+};
+
+export type TweetRawInput = {
+  id: string;
+  text: string;
+  url: string;
 };
 
 export type TweetDecisionInput = {
@@ -27,6 +33,7 @@ export type TweetDecisionInput = {
 export type TweetFilters = {
   approved?: boolean;
   humanDecision?: HumanDecision | "UNSET";
+  hasModelDecision?: boolean;
 };
 
 export type PaginationOptions = {
@@ -58,9 +65,9 @@ function initDb(): SqliteDatabase {
     CREATE TABLE IF NOT EXISTS tweets (
       id TEXT PRIMARY KEY,
       text TEXT NOT NULL,
-      quote TEXT NOT NULL,
+      quote TEXT NOT NULL DEFAULT '',
       url TEXT NOT NULL,
-      approved INTEGER NOT NULL DEFAULT 0,
+      approved INTEGER DEFAULT NULL,
       score INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
       humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED'))
@@ -73,7 +80,7 @@ function initDb(): SqliteDatabase {
 export function createTweetStore() {
   const db = initDb();
 
-  const upsert = db.prepare(`
+  const upsertWithDecision = db.prepare(`
     INSERT INTO tweets (id, text, quote, url, approved, score)
     VALUES (@id, @text, @quote, @url, @approved, @score)
     ON CONFLICT(id) DO UPDATE SET
@@ -84,9 +91,20 @@ export function createTweetStore() {
       score = excluded.score
   `);
 
+  const insertRaw = db.prepare(`
+    INSERT INTO tweets (id, text, url)
+    VALUES (@id, @text, @url)
+    ON CONFLICT(id) DO UPDATE SET
+      text = excluded.text,
+      url = excluded.url
+  `);
+
   return {
+    saveRaw(tweet: TweetRawInput) {
+      insertRaw.run(tweet);
+    },
     save(decision: TweetDecisionInput) {
-      upsert.run({
+      upsertWithDecision.run({
         ...decision,
         approved: decision.approved ? 1 : 0,
       });
@@ -95,6 +113,12 @@ export function createTweetStore() {
       const normalizedPagination = normalizePagination(pagination);
       const where: string[] = [];
       const params: Record<string, unknown> = {};
+
+      if (filters.hasModelDecision === true) {
+        where.push("approved IS NOT NULL");
+      } else if (filters.hasModelDecision === false) {
+        where.push("approved IS NULL");
+      }
 
       if (typeof filters.approved === "boolean") {
         where.push("approved = @approved");
@@ -132,7 +156,7 @@ export function createTweetStore() {
         text: string;
         quote: string;
         url: string;
-        approved: number;
+        approved: number | null;
         score: number;
         createdAt: string;
         humanDecision: HumanDecision | null;
@@ -144,7 +168,7 @@ export function createTweetStore() {
 
       const tweets = rows.map((row) => ({
         ...row,
-        approved: Boolean(row.approved),
+        approved: row.approved === null ? null : Boolean(row.approved),
         score: Number(row.score) || 0,
         humanDecision: row.humanDecision ?? null,
       }));
@@ -171,7 +195,7 @@ export function createTweetStore() {
             text: string;
             quote: string;
             url: string;
-            approved: number;
+            approved: number | null;
             score: number;
             createdAt: string;
             humanDecision: HumanDecision | null;
@@ -184,7 +208,7 @@ export function createTweetStore() {
 
       return {
         ...row,
-        approved: Boolean(row.approved),
+        approved: row.approved === null ? null : Boolean(row.approved),
         score: Number(row.score) || 0,
         humanDecision: row.humanDecision ?? null,
       };
@@ -200,6 +224,12 @@ export function createTweetStore() {
     },
     has(id: string): boolean {
       const row = db.prepare("SELECT 1 FROM tweets WHERE id = @id").get({ id });
+      return !!row;
+    },
+    hasModelDecision(id: string): boolean {
+      const row = db
+        .prepare("SELECT 1 FROM tweets WHERE id = @id AND approved IS NOT NULL")
+        .get({ id });
       return !!row;
     },
     close() {

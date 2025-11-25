@@ -16,9 +16,10 @@ const store = createTweetStore();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// returns tweets with pagination (for admin.html)
 app.get("/api/tweets", (req, res) => {
   const password = req.query.password as string;
-  const authorized = ADMIN_PASSWORD && password == ADMIN_PASSWORD;
+  const authorized = !ADMIN_PASSWORD || password === ADMIN_PASSWORD;
 
   if (password && !authorized) {
     return res.status(401).send("Unauthorized: Invalid password.");
@@ -85,7 +86,7 @@ app.post("/tweets/:id/reeval", async (req, res) => {
   }
 
   try {
-    const { quote, approved } = await askTweetDecision(tweet.text);
+    const { quote, approved, score } = await askTweetDecision(tweet.text);
 
     if (!approved) {
       return res.status(500).send("Re-evaluation resulted in rejection");
@@ -94,6 +95,7 @@ app.post("/tweets/:id/reeval", async (req, res) => {
     store.save({
       ...tweet,
       quote,
+      score,
     });
 
     const updatedTweet = store.get(tweet.id);
@@ -142,6 +144,8 @@ function parseFilters(query: any): FilterParseResult {
 
   if (approvedParam === "true" || approvedParam === "false") {
     filters.approved = approvedParam === "true";
+  } else if (approvedParam === "pending") {
+    filters.hasModelDecision = false;
   }
 
   if (

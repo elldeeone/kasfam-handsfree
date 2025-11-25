@@ -106,6 +106,7 @@
           <option value="all">All</option>
           <option value="true">Approved</option>
           <option value="false">Rejected</option>
+          <option value="pending">Pending (no decision)</option>
         </select>
       </label>
       <label>
@@ -249,7 +250,7 @@
         fetchTweets();
       }
 
-      // Load password from local storage
+      // load password from local storage
       const savedPassword = localStorage.getItem("kasfam_admin_password");
       if (savedPassword) {
         passwordInput.value = savedPassword;
@@ -323,7 +324,7 @@
             <td><a href="${escapeHtml(
               tweet.url
             )}" target="_blank" rel="noreferrer">link</a></td>
-            <td class="status-icon">${tweet.approved ? "✅" : "❌"}</td>
+            <td class="status-icon">${tweet.approved === null ? "⏳" : tweet.approved ? "✅" : "❌"}</td>
             <td>
                 <select class="decision-select" data-id="${escapeHtml(
                   tweet.id
@@ -620,7 +621,7 @@
         fetchTweets();
       });
 
-      // Initial load
+      // initial load
       applyFiltersFromUrl();
       fetchTweets();
     </script>

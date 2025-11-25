@@ -1,5 +1,5 @@
 import { askTweetDecision } from "./gptClient.js";
-import { createTweetStore, type TweetDecisionInput } from "./tweetStore.js";
+import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
 
 type Tweet = {
   id: string;
@@ -123,6 +123,17 @@ async function main() {
     store = createTweetStore();
     const tweets = await getKaspaTweets(limit, tweetIds);
 
+    // save all tweets to db first (without model decision)
+    for (const tweet of tweets) {
+      const rawInput: TweetRawInput = {
+        id: tweet.id,
+        text: tweet.text,
+        url: tweet.url,
+      };
+      store.saveRaw(rawInput);
+    }
+    log(`Saved ${tweets.length} tweets to database`);
+
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i];
       log(`Reading tweet ${i + 1} of ${tweets.length}`);
@@ -132,8 +143,8 @@ async function main() {
         continue;
       }
 
-      if (store.has(tweet.id)) {
-        log(`Skipping tweet ${tweet.id} (already exists)`);
+      if (store.hasModelDecision(tweet.id)) {
+        log(`Skipping tweet ${tweet.id} (already has model decision)`);
         continue;
       }
 
