@@ -21,9 +21,9 @@ async function ask(
       { role: "system", content: systemPrompt },
       { role: "user", content: question },
     ],
-    reasoning:{
+    reasoning: {
       effort: "high",
-    }
+    },
   });
 
   const quote = response.output_text?.trim();
@@ -38,6 +38,9 @@ type Tweet = {
   id: string;
   text: string;
   url: string;
+  author: {
+    username: string;
+  };
 };
 
 type TweetStore = ReturnType<typeof createTweetStore>;
@@ -68,6 +71,11 @@ async function main() {
     for (let i = 0; i < tweets.length; i++) {
       const tweet = tweets[i];
       log(`Reading tweet ${i + 1} of ${tweets.length}`);
+
+      if (tweet.author.username == "kaspaunchained") {
+        log(`Skipping self-tweet`);
+        continue;
+      }
 
       if (store.has(tweet.id)) {
         log(`Skipping tweet ${tweet.id} (already exists)`);
