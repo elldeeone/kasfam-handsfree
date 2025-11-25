@@ -143,6 +143,47 @@
       const loadingIndicator = document.getElementById("loading");
       const passwordInput = document.getElementById("admin-password");
 
+      function applyFiltersFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        setSelectFromParam(filterApproved, params.get("approved"));
+        setSelectFromParam(filterHuman, params.get("humanDecision"));
+      }
+
+      function setSelectFromParam(selectEl, value) {
+        if (!value) {
+          selectEl.value = "all";
+          return;
+        }
+        const optionExists = Array.from(selectEl.options).some(
+          (opt) => opt.value === value
+        );
+        selectEl.value = optionExists ? value : "all";
+      }
+
+      function updateUrlFromFilters() {
+        const params = new URLSearchParams(window.location.search);
+        syncFilterParam(params, "approved", filterApproved.value);
+        syncFilterParam(params, "humanDecision", filterHuman.value);
+        const newSearch = params.toString();
+        const newUrl = `${window.location.pathname}${
+          newSearch ? `?${newSearch}` : ""
+        }${window.location.hash}`;
+        window.history.replaceState({}, "", newUrl);
+      }
+
+      function syncFilterParam(params, key, value) {
+        if (value && value !== "all") {
+          params.set(key, value);
+        } else {
+          params.delete(key);
+        }
+      }
+
+      function handleFilterChange() {
+        updateUrlFromFilters();
+        fetchTweets();
+      }
+
       // Load password from local storage
       const savedPassword = localStorage.getItem("kasfam_admin_password");
       if (savedPassword) {
@@ -333,11 +374,15 @@
       }
 
       tweetsBody.addEventListener("change", handleDecisionChange);
-      filterApproved.addEventListener("change", fetchTweets);
-      filterHuman.addEventListener("change", fetchTweets);
-      refreshBtn.addEventListener("click", fetchTweets);
+      filterApproved.addEventListener("change", handleFilterChange);
+      filterHuman.addEventListener("change", handleFilterChange);
+      refreshBtn.addEventListener("click", () => {
+        updateUrlFromFilters();
+        fetchTweets();
+      });
 
       // Initial load
+      applyFiltersFromUrl();
       fetchTweets();
     </script>
   </body>

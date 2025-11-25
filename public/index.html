@@ -1,133 +1,235 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Kaspa Tweets - Public</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
-    a { color: #38bdf8; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #1e293b; padding: 0.5rem; vertical-align: top; }
-    th { background: #1e293b; }
-    tr:nth-child(odd) { background: #0f172a; }
-    tr:nth-child(even) { background: #1e293b; }
-    select, button { font: inherit; background: #1e293b; color: white; border: 1px solid #334155; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
-    button { cursor: pointer; background: #3b82f6; border-color: #2563eb; }
-    button:hover { background: #2563eb; }
-    .filters { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
-    .filters select { min-width: 10rem; }
-    .quote { white-space: pre-line; }
-    #loading { display: none; color: #94a3b8; margin-left: 1rem; }
-  </style>
-</head>
-<body>
-  <h1>Kaspa Tweets</h1>
-  
-  <div class="filters">
-    <label>
-      Model approved:
-      <select id="filter-approved">
-        <option value="all">All</option>
-        <option value="true">Approved</option>
-        <option value="false">Rejected</option>
-      </select>
-    </label>
-    <label>
-      Human decision:
-      <select id="filter-human">
-        <option value="all">All</option>
-        <option value="APPROVED">Approved</option>
-        <option value="REJECTED">Rejected</option>
-        <option value="UNSET">Unset</option>
-      </select>
-    </label>
-    <button id="refresh-btn">Refresh</button>
-    <span id="loading">Loading...</span>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Tweet</th>
-        <th>Quote</th>
-        <th>URL</th>
-        <th>Model Approved</th>
-        <th>Human Decision</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody id="tweets-body">
-      <!-- Tweets will be loaded here -->
-    </tbody>
-  </table>
-
-  <script>
-    const API_BASE = '/api/tweets';
-    const tweetsBody = document.getElementById('tweets-body');
-    const filterApproved = document.getElementById('filter-approved');
-    const filterHuman = document.getElementById('filter-human');
-    const refreshBtn = document.getElementById('refresh-btn');
-    const loadingIndicator = document.getElementById('loading');
-
-    async function fetchTweets() {
-      loadingIndicator.style.display = 'inline';
-      tweetsBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
-      
-      const params = new URLSearchParams();
-      if (filterApproved.value !== 'all') params.append('approved', filterApproved.value);
-      if (filterHuman.value !== 'all') params.append('humanDecision', filterHuman.value);
-
-      try {
-        const res = await fetch(`${API_BASE}?${params.toString()}`);
-        if (!res.ok) throw new Error('Failed to fetch tweets');
-        const tweets = await res.json();
-        renderTweets(tweets);
-      } catch (err) {
-        console.error(err);
-        tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
-      } finally {
-        loadingIndicator.style.display = 'none';
+  <head>
+    <meta charset="utf-8" />
+    <title>Kaspa Tweets - Public</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+        background: #0f172a;
+        color: #e2e8f0;
       }
-    }
+      a {
+        color: #38bdf8;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+      }
+      th,
+      td {
+        border: 1px solid #1e293b;
+        padding: 0.5rem;
+        vertical-align: top;
+      }
+      th {
+        background: #1e293b;
+      }
+      tr:nth-child(odd) {
+        background: #0f172a;
+      }
+      tr:nth-child(even) {
+        background: #1e293b;
+      }
+      select,
+      button {
+        font: inherit;
+        background: #1e293b;
+        color: white;
+        border: 1px solid #334155;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+      }
+      button {
+        cursor: pointer;
+        background: #3b82f6;
+        border-color: #2563eb;
+      }
+      button:hover {
+        background: #2563eb;
+      }
+      .filters {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      .filters select {
+        min-width: 10rem;
+      }
+      .quote {
+        white-space: pre-line;
+      }
+      #loading {
+        display: none;
+        color: #94a3b8;
+        margin-left: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Kaspa Tweets</h1>
 
-    function renderTweets(tweets) {
-      if (tweets.length === 0) {
-        tweetsBody.innerHTML = '<tr><td colspan="7" style="text-align:center">No tweets found</td></tr>';
-        return;
+    <div class="filters">
+      <label>
+        Model approved:
+        <select id="filter-approved">
+          <option value="all">All</option>
+          <option value="true">Approved</option>
+          <option value="false">Rejected</option>
+        </select>
+      </label>
+      <label>
+        Human decision:
+        <select id="filter-human">
+          <option value="all">All</option>
+          <option value="APPROVED">Approved</option>
+          <option value="REJECTED">Rejected</option>
+          <option value="UNSET">Unset</option>
+        </select>
+      </label>
+      <button id="refresh-btn">Refresh</button>
+      <span id="loading">Loading...</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Tweet</th>
+          <th>Quote</th>
+          <th>URL</th>
+          <th>Model Approved</th>
+          <th>Human Decision</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="tweets-body">
+        <!-- Tweets will be loaded here -->
+      </tbody>
+    </table>
+
+    <script>
+      const API_BASE = "/api/tweets";
+      const tweetsBody = document.getElementById("tweets-body");
+      const filterApproved = document.getElementById("filter-approved");
+      const filterHuman = document.getElementById("filter-human");
+      const refreshBtn = document.getElementById("refresh-btn");
+      const loadingIndicator = document.getElementById("loading");
+
+      function applyFiltersFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        setSelectFromParam(filterApproved, params.get("approved"));
+        setSelectFromParam(filterHuman, params.get("humanDecision"));
       }
 
-      tweetsBody.innerHTML = tweets.map(tweet => {
-        return `
+      function setSelectFromParam(selectEl, value) {
+        if (!value) {
+          selectEl.value = "all";
+          return;
+        }
+        const optionExists = Array.from(selectEl.options).some(
+          (opt) => opt.value === value
+        );
+        selectEl.value = optionExists ? value : "all";
+      }
+
+      function updateUrlFromFilters() {
+        const params = new URLSearchParams(window.location.search);
+        syncFilterParam(params, "approved", filterApproved.value);
+        syncFilterParam(params, "humanDecision", filterHuman.value);
+        const newSearch = params.toString();
+        const newUrl = `${window.location.pathname}${
+          newSearch ? `?${newSearch}` : ""
+        }${window.location.hash}`;
+        window.history.replaceState({}, "", newUrl);
+      }
+
+      function syncFilterParam(params, key, value) {
+        if (value && value !== "all") {
+          params.set(key, value);
+        } else {
+          params.delete(key);
+        }
+      }
+
+      function handleFilterChange() {
+        updateUrlFromFilters();
+        fetchTweets();
+      }
+
+      async function fetchTweets() {
+        loadingIndicator.style.display = "inline";
+        tweetsBody.innerHTML =
+          '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
+
+        const params = new URLSearchParams();
+        if (filterApproved.value !== "all")
+          params.append("approved", filterApproved.value);
+        if (filterHuman.value !== "all")
+          params.append("humanDecision", filterHuman.value);
+
+        try {
+          const res = await fetch(`${API_BASE}?${params.toString()}`);
+          if (!res.ok) throw new Error("Failed to fetch tweets");
+          const tweets = await res.json();
+          renderTweets(tweets);
+        } catch (err) {
+          console.error(err);
+          tweetsBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
+        } finally {
+          loadingIndicator.style.display = "none";
+        }
+      }
+
+      function renderTweets(tweets) {
+        if (tweets.length === 0) {
+          tweetsBody.innerHTML =
+            '<tr><td colspan="7" style="text-align:center">No tweets found</td></tr>';
+          return;
+        }
+
+        tweetsBody.innerHTML = tweets
+          .map((tweet) => {
+            return `
           <tr>
             <td>${escapeHtml(tweet.id)}</td>
             <td>${escapeHtml(tweet.text)}</td>
             <td class="quote">${escapeHtml(tweet.quote)}</td>
-            <td><a href="${escapeHtml(tweet.url)}" target="_blank" rel="noreferrer">link</a></td>
+            <td><a href="${escapeHtml(
+              tweet.url
+            )}" target="_blank" rel="noreferrer">link</a></td>
             <td class="status-icon">${tweet.approved ? "✅" : "❌"}</td>
-            <td>${tweet.humanDecision || 'UNSET'}</td>
+            <td>${tweet.humanDecision || "UNSET"}</td>
             <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
           </tr>
         `;
-      }).join('');
-    }
+          })
+          .join("");
+      }
 
-    function escapeHtml(value) {
-      if (!value) return '';
-      return String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
+      function escapeHtml(value) {
+        if (!value) return "";
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
 
-    filterApproved.addEventListener('change', fetchTweets);
-    filterHuman.addEventListener('change', fetchTweets);
-    refreshBtn.addEventListener('click', fetchTweets);
+      filterApproved.addEventListener("change", handleFilterChange);
+      filterHuman.addEventListener("change", handleFilterChange);
+      refreshBtn.addEventListener("click", () => {
+        updateUrlFromFilters();
+        fetchTweets();
+      });
 
-    // Initial load
-    fetchTweets();
-  </script>
-</body>
+      // Initial load
+      applyFiltersFromUrl();
+      fetchTweets();
+    </script>
+  </body>
 </html>
