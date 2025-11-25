@@ -341,7 +341,7 @@
             <td>
               <button type="button" class="reeval-btn" data-id="${escapeHtml(
                 tweet.id
-              )}">Re-evaluate</button>
+              )}">Suggest new QT</button>
             </td>
           </tr>
         `;
@@ -459,7 +459,7 @@
 
         const originalLabel = button.textContent;
         button.disabled = true;
-        button.textContent = "Re-evaluating...";
+        button.textContent = "Thinking...";
 
         try {
           const res = await fetch(`/tweets/${encodeURIComponent(id)}/reeval`, {
