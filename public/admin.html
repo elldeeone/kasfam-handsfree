@@ -480,8 +480,24 @@
             throw new Error(text || "Failed to re-evaluate tweet.");
           }
 
-          await res.json();
-          await fetchTweets();
+          const updatedTweet = await res.json();
+          const row = button.closest("tr");
+          if (!row) {
+            await fetchTweets();
+            return;
+          }
+
+          const quoteCell = row.querySelector(".quote");
+          if (quoteCell) {
+            quoteCell.textContent = updatedTweet.quote ?? "";
+          }
+
+          const statusCell = row.querySelector(".status-icon");
+          if (statusCell) {
+            statusCell.textContent = updatedTweet.approved ? "✅" : "❌";
+          }
+
+          row.dataset.approved = String(Boolean(updatedTweet.approved));
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           alert(`Failed to re-evaluate tweet: ${message}`);
