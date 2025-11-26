@@ -26,6 +26,38 @@ app.get("/api/tweets", (req, res) => {
   }
 
   const { filters, pagination } = parseFilters(req.query);
+  // Public endpoint only shows tweets that have been processed by the model
+  filters.hasModelDecision = true;
+  const { tweets, total, page, pageSize } = store.list(filters, pagination);
+
+  const responseData = tweets.map((t) => ({
+    ...t,
+    quote: authorized || t.approved ? t.quote : "",
+  }));
+
+  const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+
+  res.json({
+    data: responseData,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+    },
+  });
+});
+
+app.get("/api/admin/tweets", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const authorized = true;
+  const { filters, pagination } = parseFilters(req.query);
   const { tweets, total, page, pageSize } = store.list(filters, pagination);
 
   const responseData = tweets.map((t) => ({
@@ -130,8 +162,11 @@ app.post("/tweets/:id/reeval", async (req, res) => {
     }
 
     store.save({
-      ...tweet,
+      id: tweet.id,
+      text: tweet.text,
+      url: tweet.url,
       quote,
+      approved,
       score,
     });
 

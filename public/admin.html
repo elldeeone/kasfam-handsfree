@@ -201,7 +201,7 @@
     </div>
 
     <script>
-      const API_BASE = "/api/tweets";
+      const API_BASE = "/api/admin/tweets";
       const tweetsBody = document.getElementById("tweets-body");
       const filterApproved = document.getElementById("filter-approved");
       const filterHuman = document.getElementById("filter-human");
@@ -357,9 +357,7 @@
               tweet.url
             )}" target="_blank" rel="noreferrer">link</a></td>
             <td class="status-icon">
-              ${isPending 
-                ? `<span>⏳</span> <button class="process-btn" data-id="${escapeHtml(tweet.id)}">▶</button>`
-                : tweet.approved ? "✅" : "❌"}
+              ${isPending ? "⏳" : tweet.approved ? "✅" : "❌"}
             </td>
             <td>
                 <select class="decision-select" data-id="${escapeHtml(
@@ -379,6 +377,7 @@
             <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
             <td>${tweet.updatedAt ? escapeHtml(new Date(tweet.updatedAt).toLocaleString()) : "-"}</td>
             <td>
+              ${isPending ? `<button class="process-btn" data-id="${escapeHtml(tweet.id)}" style="margin-right: 0.5rem;">▶</button>` : ""}
               ${!isPending ? `<button type="button" class="reeval-btn" data-id="${escapeHtml(tweet.id)}">Suggest new QT</button>` : ""}
             </td>
           </tr>
