@@ -36,6 +36,22 @@ npm start
 
 The system prompt lives in `src/prompt.ts`. Edit that file if you need a different tone or instruction set. The script prints the model's answer to stdout and falls back to dumping the raw response if no text output is available.
 
+## Metrics (published tweets)
+
+Once a tweet is posted on X, add its URL or ID in the admin UI when approving it. Then run:
+
+```bash
+# install python deps once
+pip install -r requirements.txt
+
+# fetch public engagement metrics for tweets with publishedTweetId
+npm run metrics
+```
+
+Env vars (pick one auth path):
+- `X_BEARER_TOKEN` (preferred for public metrics), or
+- `X_CONSUMER_KEY`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET` (user context).
+
 ## Database migrations
 
 A simple SQLite migration for storing tweet decisions is included in `migrations/001_create_tweets_table.sql`. Run it through npm (powered by the bundled [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) driver—no external sqlite binary needed):

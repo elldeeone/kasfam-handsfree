@@ -140,6 +140,7 @@
           <th>Quote</th>
           <th>Score</th>
           <th>URL</th>
+          <th>Published URL/ID</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
           <th>Created</th>
@@ -262,7 +263,7 @@
       async function fetchTweets() {
         loadingIndicator.style.display = "inline";
         tweetsBody.innerHTML =
-          '<tr><td colspan="9" style="text-align:center">Loading...</td></tr>';
+          '<tr><td colspan="10" style="text-align:center">Loading...</td></tr>';
 
         const params = new URLSearchParams();
         if (filterApproved.value !== "all")
@@ -323,6 +324,21 @@
             <td><a href="${escapeHtml(
               tweet.url
             )}" target="_blank" rel="noreferrer">link</a></td>
+            <td>
+              <div style="display:flex; gap:0.25rem; align-items:center;">
+                <input
+                  type="text"
+                  class="published-id-input"
+                  data-id="${escapeHtml(tweet.id)}"
+                  placeholder="URL or ID"
+                  value="${escapeHtml(tweet.publishedTweetId ?? "")}"
+                  style="min-width: 12rem;"
+                />
+                <button type="button" class="save-published-btn" data-id="${escapeHtml(
+                  tweet.id
+                )}">Save ID</button>
+              </div>
+            </td>
             <td class="status-icon">${tweet.approved ? "✅" : "❌"}</td>
             <td>
                 <select class="decision-select" data-id="${escapeHtml(
@@ -352,7 +368,7 @@
       }
 
       function showNoTweetsMessage(message = "No tweets found") {
-        tweetsBody.innerHTML = `<tr><td colspan="9" style="text-align:center">${message}</td></tr>`;
+        tweetsBody.innerHTML = `<tr><td colspan="10" style="text-align:center">${message}</td></tr>`;
       }
 
       function rowMatchesCurrentFilters(rowData) {
@@ -391,6 +407,12 @@
         const id = select.dataset.id;
         const password = passwordInput.value;
         const previousValue = select.dataset.prevValue || "";
+        const row = select.closest("tr");
+        const publishedInput = row?.querySelector(".published-id-input");
+        const publishedTweetUrlOrId =
+          publishedInput && publishedInput.value
+            ? publishedInput.value.trim()
+            : undefined;
 
         if (!password) {
           alert("Please enter the admin password before saving.");
@@ -413,7 +435,11 @@
               headers: {
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ decision, password }),
+              body: JSON.stringify({
+                decision,
+                password,
+                publishedTweetUrlOrId,
+              }),
             }
           );
 
@@ -442,6 +468,63 @@
           select.value = previousValue;
         } finally {
           select.disabled = false;
+        }
+      }
+
+      async function handleSavePublishedId(button) {
+        const id = button.dataset.id;
+        const password = passwordInput.value;
+        const row = button.closest("tr");
+        const input = row?.querySelector(".published-id-input");
+        const value = input?.value.trim() ?? "";
+
+        if (!password) {
+          alert("Please enter the admin password before saving.");
+          return;
+        }
+
+        if (!id) {
+          alert("Missing tweet ID.");
+          return;
+        }
+
+        if (!value) {
+          alert("Enter a tweet URL or ID to save.");
+          return;
+        }
+
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = "Saving...";
+
+        try {
+          const res = await fetch(
+            `/tweets/${encodeURIComponent(id)}/human-decision`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                password,
+                publishedTweetUrlOrId: value,
+              }),
+            }
+          );
+
+          if (res.status === 401) {
+            alert("Unauthorized: Please check your password.");
+            return;
+          }
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || "Failed to save published ID.");
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          alert(`Failed to save published ID: ${message}`);
+        } finally {
+          button.disabled = false;
+          button.textContent = originalText || "Save ID";
         }
       }
 
@@ -611,6 +694,11 @@
           target.classList.contains("reeval-btn")
         ) {
           handleReevalButtonClick(target);
+        } else if (
+          target instanceof HTMLButtonElement &&
+          target.classList.contains("save-published-btn")
+        ) {
+          handleSavePublishedId(target);
         }
       });
       filterApproved.addEventListener("change", handleFilterChange);

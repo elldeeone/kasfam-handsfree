@@ -50,22 +50,42 @@ app.get("/api/tweets", (req, res) => {
 app.use(express.static(path.join(process.cwd(), "public")));
 
 app.post("/tweets/:id/human-decision", (req, res) => {
-  const { decision, password } = req.body as {
+  const { decision, password, publishedTweetUrlOrId } = req.body as {
     decision?: string;
     password?: string;
+    publishedTweetUrlOrId?: string;
   };
 
   if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
     return res.status(401).send("Unauthorized: Invalid or missing password.");
   }
 
-  const normalized = normalizeDecision(decision);
-  if (!normalized) {
+  const normalizedDecision =
+    decision === undefined ? undefined : normalizeDecision(decision);
+  if (decision !== undefined && !normalizedDecision) {
     return res.status(400).send("Invalid decision. Use APPROVED or REJECTED.");
   }
 
-  store.updateHumanDecision(req.params.id, normalized);
-  res.json({ success: true });
+  let publishedTweetId: string | null | undefined = undefined;
+  if (publishedTweetUrlOrId !== undefined) {
+    const parsedId = parseTweetId(publishedTweetUrlOrId);
+    if (!parsedId) {
+      return res
+        .status(400)
+        .send("Invalid tweet URL or ID. Provide a valid X status link or ID.");
+    }
+    publishedTweetId = parsedId;
+  }
+
+  if (normalizedDecision === undefined && publishedTweetId === undefined) {
+    return res
+      .status(400)
+      .send("Provide a decision or a published tweet URL/ID to update.");
+  }
+
+  store.updateHumanDecision(req.params.id, normalizedDecision, publishedTweetId);
+  const updated = store.get(req.params.id);
+  res.json({ success: true, tweet: updated });
 });
 
 app.post("/tweets/:id/reeval", async (req, res) => {
@@ -176,4 +196,29 @@ function parsePositiveInteger(value?: string): number | null {
     return null;
   }
   return parsed;
+}
+
+function parseTweetId(value?: string): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  // If plain numeric ID
+  if (/^\d+$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Try to extract from URL containing /status/ or /statuses/
+  const match = trimmed.match(/status(?:es)?\/(\d+)/i);
+  if (match && match[1]) {
+    return match[1];
+  }
+
+  // Fallback: last number group of length >= 5
+  const fallbackMatch = trimmed.match(/(\d{5,})/);
+  if (fallbackMatch && fallbackMatch[1]) {
+    return fallbackMatch[1];
+  }
+
+  return null;
 }

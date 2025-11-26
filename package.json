@@ -10,7 +10,8 @@
     "dev": "tsx src/index.ts",
     "lint": "tsc --noEmit",
     "migrate": "node scripts/run-migrations.mjs",
-    "web": "tsx src/server.ts"
+    "web": "tsx src/server.ts",
+    "metrics": "python3 scripts/fetch_metrics.py"
   },
   "keywords": [],
   "author": "",
