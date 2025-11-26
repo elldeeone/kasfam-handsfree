@@ -14,10 +14,12 @@ This script does not change ingestion; it only updates metrics for rows that alr
 """
 
 import argparse
+import json
 import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Iterable, List, Tuple
 
 import tweepy
@@ -27,6 +29,22 @@ def get_client() -> tweepy.Client:
     bearer = os.getenv("X_BEARER_TOKEN")
     if bearer:
         return tweepy.Client(bearer_token=bearer, wait_on_rate_limit=True)
+
+    tokens_path = Path(os.getenv("X_TOKEN_PATH", "data/x_tokens.json"))
+    if tokens_path.exists():
+        token_data = json.loads(tokens_path.read_text())
+        access_token = token_data.get("access_token")
+        refresh_token = token_data.get("refresh_token")
+        client_id = os.getenv("X_CLIENT_ID")
+        client_secret = os.getenv("X_CLIENT_SECRET")
+        if access_token and client_id:
+            return tweepy.Client(
+                client_id=client_id,
+                client_secret=client_secret,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                wait_on_rate_limit=True,
+            )
 
     ck = os.getenv("X_CONSUMER_KEY")
     cs = os.getenv("X_CONSUMER_SECRET")
@@ -43,7 +61,7 @@ def get_client() -> tweepy.Client:
 
     sys.exit(
         "Missing auth. Set X_BEARER_TOKEN or "
-        "X_CONSUMER_KEY/X_CONSUMER_SECRET/X_ACCESS_TOKEN/X_ACCESS_SECRET."
+        "X_CONSUMER_KEY/X_CONSUMER_SECRET/X_ACCESS_TOKEN/X_ACCESS_SECRET or provide tokens at data/x_tokens.json."
     )
 
 
