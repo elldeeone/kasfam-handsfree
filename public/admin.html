@@ -141,6 +141,12 @@
           <th>Score</th>
           <th>URL</th>
           <th>Published URL/ID</th>
+          <th>Likes</th>
+          <th>Retweets</th>
+          <th>Replies</th>
+          <th>Quotes</th>
+          <th>Views</th>
+          <th>Metrics Updated</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
           <th>Created</th>
@@ -263,7 +269,7 @@
       async function fetchTweets() {
         loadingIndicator.style.display = "inline";
         tweetsBody.innerHTML =
-          '<tr><td colspan="10" style="text-align:center">Loading...</td></tr>';
+          '<tr><td colspan="16" style="text-align:center">Loading...</td></tr>';
 
         const params = new URLSearchParams();
         if (filterApproved.value !== "all")
@@ -339,6 +345,16 @@
                 )}">Save ID</button>
               </div>
             </td>
+            <td>${escapeHtml(String(tweet.likesCount ?? 0))}</td>
+            <td>${escapeHtml(String(tweet.retweetsCount ?? 0))}</td>
+            <td>${escapeHtml(String(tweet.repliesCount ?? 0))}</td>
+            <td>${escapeHtml(String(tweet.quotesCount ?? 0))}</td>
+            <td>${escapeHtml(String(tweet.viewsCount ?? 0))}</td>
+            <td>${escapeHtml(
+              tweet.lastMetricsUpdate
+                ? new Date(tweet.lastMetricsUpdate).toLocaleString()
+                : ""
+            )}</td>
             <td class="status-icon">${tweet.approved ? "✅" : "❌"}</td>
             <td>
                 <select class="decision-select" data-id="${escapeHtml(
@@ -368,7 +384,7 @@
       }
 
       function showNoTweetsMessage(message = "No tweets found") {
-        tweetsBody.innerHTML = `<tr><td colspan="10" style="text-align:center">${message}</td></tr>`;
+        tweetsBody.innerHTML = `<tr><td colspan="16" style="text-align:center">${message}</td></tr>`;
       }
 
       function rowMatchesCurrentFilters(rowData) {
