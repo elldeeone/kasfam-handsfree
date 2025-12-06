@@ -63,8 +63,27 @@
       .filters select {
         min-width: 10rem;
       }
-      .quote {
+      .cell-content {
+        max-height: 200px;
+        overflow: hidden;
+        position: relative;
+      }
+      .quote .cell-content {
         white-space: pre-line;
+      }
+      .cell-content.expanded {
+        max-height: none;
+      }
+      .expand-toggle {
+        display: inline-block;
+        color: #38bdf8;
+        cursor: pointer;
+        font-size: 0.9em;
+        margin-top: 0.125rem;
+        text-decoration: underline;
+      }
+      .expand-toggle:hover {
+        color: #0ea5e9;
       }
       #loading {
         display: none;
@@ -113,6 +132,15 @@
     </div>
 
     <table>
+      <colgroup>
+        <col /><!-- ID -->
+        <col /><!-- Tweet -->
+        <col style="min-width: 20%;" /><!-- Quote -->
+        <col /><!-- URL -->
+        <col /><!-- Model Approved -->
+        <col /><!-- Human Decision -->
+        <col /><!-- Date -->
+      </colgroup>
       <thead>
         <tr>
           <th>ID</th>
@@ -121,7 +149,7 @@
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
-          <th>Created</th>
+          <th>Date</th>
         </tr>
       </thead>
       <tbody id="tweets-body">
@@ -265,18 +293,25 @@
             return `
           <tr>
             <td>${escapeHtml(tweet.id)}</td>
-            <td>${escapeHtml(tweet.text)}</td>
-            <td class="quote">${escapeHtml(tweet.quote)}</td>
+            <td>
+              <div class="cell-content" data-content-type="tweet">${escapeHtml(tweet.text)}</div>
+              <span class="expand-toggle" data-target="tweet" style="display: none;">Show more</span>
+            </td>
+            <td class="quote">
+              <div class="cell-content" data-content-type="quote">${escapeHtml(tweet.quote)}</div>
+              <span class="expand-toggle" data-target="quote" style="display: none;">Show more</span>
+            </td>
             <td><a href="${escapeHtml(
               tweet.url
             )}" target="_blank" rel="noreferrer">link</a></td>
             <td class="status-icon">${tweet.approved ? "✅" : "❌"}</td>
             <td>${tweet.humanDecision || "UNSET"}</td>
-            <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
+            <td>${escapeHtml(new Date(tweet.updatedAt || tweet.createdAt).toLocaleString())}</td>
           </tr>
         `;
           })
           .join("");
+        setTimeout(updateExpandToggles, 50);
       }
 
       function escapeHtml(value) {
@@ -364,6 +399,12 @@
         fetchTweets();
       });
 
+      tweetsBody.addEventListener("click", (event) => {
+        if (event.target.classList.contains("expand-toggle")) {
+          handleExpandToggle(event);
+        }
+      });
+
       filterApproved.addEventListener("change", handleFilterChange);
       filterHuman.addEventListener("change", handleFilterChange);
       refreshBtn.addEventListener("click", () => {
@@ -371,9 +412,40 @@
         fetchTweets();
       });
 
-      // Initial load
+      // cell expand/collapse functionality
+      function updateExpandToggles() {
+        const cells = document.querySelectorAll('.cell-content');
+        cells.forEach(cell => {
+          const toggle = cell.nextElementSibling;
+          if (toggle && toggle.classList.contains('expand-toggle')) {
+            const isOverflowing = cell.scrollHeight > cell.clientHeight;
+            toggle.style.display = isOverflowing ? 'inline-block' : 'none';
+          }
+        });
+      }
+
+      function handleExpandToggle(event) {
+        if (!event.target.classList.contains('expand-toggle')) return;
+
+        const toggle = event.target;
+        const cell = toggle.previousElementSibling;
+        const isExpanded = cell.classList.contains('expanded');
+
+        if (isExpanded) {
+          cell.classList.remove('expanded');
+          toggle.textContent = 'Show more';
+        } else {
+          cell.classList.add('expanded');
+          toggle.textContent = 'Show less';
+        }
+      }
+
+      // initial load
       applyFiltersFromUrl();
       fetchTweets();
+
+      // update expand toggles after tweets are loaded
+      setTimeout(updateExpandToggles, 100);
     </script>
   </body>
 </html>

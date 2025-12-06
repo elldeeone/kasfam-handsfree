@@ -34,6 +34,24 @@ npm run build
 npm start
 ```
 
+### CLI Options
+
+The app pulls all available tweets from the source(kaspa-news) and by default we will send them all to chatgpt for processing. You can limit the number of tweets processed by the LLM using the `--limit` flag, or process a specific tweet (from the API) using `--tweet-id`.
+
+```bash
+# process all tweets (default)
+npm run dev
+
+# process only the latest 50 tweets
+npm run dev -- --limit 50
+
+# process a specific tweet by id
+npm run dev -- --tweet-id 1992657727361868193
+
+# process multiple tweets by id (comma-separated)
+npm run dev -- --tweet-id 1992657727361868193,1992726968492786130,1992637633194016807
+```
+
 The system prompt lives in `src/prompt.ts`. Edit that file if you need a different tone or instruction set. The script prints the model's answer to stdout and falls back to dumping the raw response if no text output is available.
 
 ## Database migrations
@@ -49,6 +67,16 @@ npm run migrate -- ./data/moderation.db
 ```
 
 By default the script writes to `data/app.db`. All `.sql` files inside `migrations/` are executed in order, creating the `tweets` table with `id`, `text`, `quote`, `url`, `approved`, `createdAt`, and `humanDecision` columns (`id` remains unique via the primary key and index).
+
+### Reset database
+
+To completely reset the database (deletes all tweets and recreates the schema):
+
+```bash
+npm run reset-db
+```
+
+Ensure there are no other processes running.
 
 ## Moderation dashboard
 

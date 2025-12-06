@@ -16,14 +16,47 @@ const store = createTweetStore();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// returns tweets with pagination (for admin.html)
 app.get("/api/tweets", (req, res) => {
   const password = req.query.password as string;
-  const authorized = ADMIN_PASSWORD && password == ADMIN_PASSWORD;
+  const authorized = !ADMIN_PASSWORD || password === ADMIN_PASSWORD;
 
   if (password && !authorized) {
     return res.status(401).send("Unauthorized: Invalid password.");
   }
 
+  const { filters, pagination } = parseFilters(req.query);
+  // Public endpoint only shows tweets that have been processed by the model
+  filters.hasModelDecision = true;
+  const { tweets, total, page, pageSize } = store.list(filters, pagination);
+
+  const responseData = tweets.map((t) => ({
+    ...t,
+    quote: authorized || t.approved ? t.quote : "",
+  }));
+
+  const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+
+  res.json({
+    data: responseData,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+    },
+  });
+});
+
+app.get("/api/admin/tweets", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const authorized = true;
   const { filters, pagination } = parseFilters(req.query);
   const { tweets, total, page, pageSize } = store.list(filters, pagination);
 
@@ -68,6 +101,43 @@ app.post("/tweets/:id/human-decision", (req, res) => {
   res.json({ success: true });
 });
 
+// process a single tweet through the AI model (for pending tweets)
+app.post("/api/admin/tweets/:id/process", async (req, res) => {
+  const { password } = req.body as { password?: string };
+
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const tweet = store.get(req.params.id);
+  if (!tweet) {
+    return res.status(404).send("Tweet not found.");
+  }
+
+  if (tweet.approved !== null) {
+    return res.status(400).send("Tweet already has a model decision.");
+  }
+
+  try {
+    const { quote, approved, score } = await askTweetDecision(tweet.text);
+
+    store.save({
+      id: tweet.id,
+      text: tweet.text,
+      url: tweet.url,
+      quote: quote ?? "",
+      approved,
+      score,
+    });
+
+    res.json({ success: true, approved, quote, score });
+  } catch (error) {
+    console.error("Error processing tweet:", error);
+    res.status(500).send("Failed to process tweet through AI model.");
+  }
+});
+
+// re-evaluate an already approved tweet
 app.post("/tweets/:id/reeval", async (req, res) => {
   const { password } = (req.body ?? {}) as { password?: string };
 
@@ -85,15 +155,19 @@ app.post("/tweets/:id/reeval", async (req, res) => {
   }
 
   try {
-    const { quote, approved } = await askTweetDecision(tweet.text);
+    const { quote, approved, score } = await askTweetDecision(tweet.text);
 
     if (!approved) {
       return res.status(500).send("Re-evaluation resulted in rejection");
     }
 
     store.save({
-      ...tweet,
+      id: tweet.id,
+      text: tweet.text,
+      url: tweet.url,
       quote,
+      approved,
+      score,
     });
 
     const updatedTweet = store.get(tweet.id);
@@ -142,6 +216,8 @@ function parseFilters(query: any): FilterParseResult {
 
   if (approvedParam === "true" || approvedParam === "false") {
     filters.approved = approvedParam === "true";
+  } else if (approvedParam === "pending") {
+    filters.hasModelDecision = false;
   }
 
   if (
