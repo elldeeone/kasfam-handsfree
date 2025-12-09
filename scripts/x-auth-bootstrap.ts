@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+import "dotenv/config";
 /**
  * 3-Legged OAuth 1.0a Flow using OOB (Out-of-Band) PIN method
  *

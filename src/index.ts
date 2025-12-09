@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { askTweetDecision } from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
 import { createXClient } from "./xClient.js";
@@ -108,8 +109,16 @@ type ParsedArgs = {
   tweetIds: string[] | undefined;
 };
 
+function getDefaultSource(): TweetSource {
+  const envSource = process.env.DEFAULT_SOURCE;
+  if (envSource === "kaspa-news" || envSource === "x-api" || envSource === "both") {
+    return envSource;
+  }
+  return "kaspa-news";
+}
+
 function extractArguments(args: string[]): ParsedArgs {
-  let source: TweetSource = "kaspa-news";
+  let source: TweetSource = getDefaultSource();
   let limit: number | undefined = undefined;
   let tweetIds: string[] | undefined = undefined;
 
