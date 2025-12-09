@@ -7,6 +7,9 @@ import {
   type GoldExampleType,
   type TweetFilters,
   type PaginationOptions,
+  type SortOptions,
+  type SortField,
+  type SortDirection,
 } from "./tweetStore.js";
 import { askTweetDecision, MalformedResponseError, type FewShotExample } from "./gptClient.js";
 
@@ -38,10 +41,10 @@ app.get("/api/tweets", (req, res) => {
     return res.status(401).send("Unauthorized: Invalid password.");
   }
 
-  const { filters, pagination } = parseFilters(req.query);
+  const { filters, pagination, sort } = parseFilters(req.query);
   // Public endpoint only shows tweets that have been processed by the model
   filters.hasModelDecision = true;
-  const { tweets, total, page, pageSize } = store.list(filters, pagination);
+  const { tweets, total, page, pageSize } = store.list(filters, pagination, sort);
 
   const responseData = tweets.map((t) => ({
     ...t,
@@ -70,8 +73,8 @@ app.get("/api/admin/tweets", (req, res) => {
   }
 
   const authorized = true;
-  const { filters, pagination } = parseFilters(req.query);
-  const { tweets, total, page, pageSize } = store.list(filters, pagination);
+  const { filters, pagination, sort } = parseFilters(req.query);
+  const { tweets, total, page, pageSize } = store.list(filters, pagination, sort);
 
   const responseData = tweets.map((t) => ({
     ...t,
@@ -323,6 +326,7 @@ process.on("SIGTERM", () => {
 type FilterParseResult = {
   filters: TweetFilters;
   pagination: PaginationOptions;
+  sort: SortOptions;
 };
 
 function parseFilters(query: any): FilterParseResult {
@@ -335,6 +339,10 @@ function parseFilters(query: any): FilterParseResult {
   const pageParam = typeof query.page === "string" ? query.page : undefined;
   const pageSizeParam =
     typeof query.pageSize === "string" ? query.pageSize : undefined;
+  const orderByParam =
+    typeof query.orderBy === "string" ? query.orderBy : undefined;
+  const orderDirParam =
+    typeof query.orderDir === "string" ? query.orderDir : undefined;
 
   const filters: TweetFilters = {};
 
@@ -367,7 +375,15 @@ function parseFilters(query: any): FilterParseResult {
   if (parsedPage) pagination.page = parsedPage;
   if (parsedPageSize) pagination.pageSize = parsedPageSize;
 
-  return { filters, pagination };
+  const sort: SortOptions = {};
+  if (orderByParam === "score" || orderByParam === "createdAt" || orderByParam === "updatedAt") {
+    sort.orderBy = orderByParam as SortField;
+  }
+  if (orderDirParam === "asc" || orderDirParam === "desc") {
+    sort.orderDir = orderDirParam as SortDirection;
+  }
+
+  return { filters, pagination, sort };
 }
 
 function normalizeDecision(value?: string): HumanDecision | null {
