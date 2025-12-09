@@ -3,13 +3,6 @@ import { prompt as basePrompt, buildPromptWithExamples, type FewShotExample } fr
 
 const openAiClient = new OpenAI({ apiKey: assertApiKey() });
 
-// Store the previous response ID for conversation memory across tweets
-let previousResponseId: string | null = null;
-
-export function resetConversationMemory(): void {
-  previousResponseId = null;
-}
-
 function assertApiKey(): string {
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
@@ -22,19 +15,26 @@ export type AskTweetDecisionResult = {
   quote: string;
   approved: boolean;
   score: number;  // Percentile 0-100
-  responseId: string;  // For debugging conversation chain
+  responseId: string;  // For conversation chain persistence
 };
 
 export type AskTweetDecisionOptions = {
   examples?: FewShotExample[];
-  useConversationMemory?: boolean;  // Default true for CLI, false for server one-offs
+  previousResponseId?: string | null;  // For conversation memory chain
 };
+
+export class MalformedResponseError extends Error {
+  constructor(message: string, public rawResponse: string) {
+    super(message);
+    this.name = "MalformedResponseError";
+  }
+}
 
 export async function askTweetDecision(
   tweetText: string,
   options: AskTweetDecisionOptions = {}
 ): Promise<AskTweetDecisionResult> {
-  const { examples, useConversationMemory = true } = options;
+  const { examples, previousResponseId } = options;
 
   const systemPrompt = examples?.length
     ? buildPromptWithExamples(examples)
@@ -49,22 +49,47 @@ export async function askTweetDecision(
     reasoning: {
       effort: "high",
     },
-    ...(useConversationMemory && previousResponseId ? { previous_response_id: previousResponseId } : {}),
+    ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
   });
 
-  // Store response ID for next tweet (if using conversation memory)
-  if (useConversationMemory) {
-    previousResponseId = response.id;
+  const quote = response.output_text?.trim() ?? "";
+
+  // Validate response format
+  if (!quote) {
+    throw new MalformedResponseError("Empty response from model", quote);
   }
 
-  const quote = response.output_text?.trim() ?? "";
-  const approved = !quote.startsWith("Rejected");
+  // Must start with "Approved" or "Rejected" (case-sensitive as per prompt)
+  const isApproved = quote.startsWith("Approved");
+  const isRejected = quote.startsWith("Rejected");
 
-  // Parse percentile (0-100) instead of old score (1-10)
-  const percentileMatch = quote.match(/Percentile:\s*(\d+)/i);
-  const score = percentileMatch ? parseInt(percentileMatch[1], 10) : 0;
+  if (!isApproved && !isRejected) {
+    throw new MalformedResponseError(
+      `Response must start with "Approved" or "Rejected", got: "${quote.slice(0, 50)}..."`,
+      quote
+    );
+  }
 
-  return { quote, approved, score, responseId: response.id };
+  // Parse percentile for approved tweets
+  let score = 0;
+  if (isApproved) {
+    const percentileMatch = quote.match(/Percentile:\s*(\d+)/i);
+    if (!percentileMatch) {
+      throw new MalformedResponseError(
+        `Approved response missing Percentile field: "${quote.slice(0, 100)}..."`,
+        quote
+      );
+    }
+    score = parseInt(percentileMatch[1], 10);
+    if (score < 0 || score > 100) {
+      throw new MalformedResponseError(
+        `Percentile must be 0-100, got: ${score}`,
+        quote
+      );
+    }
+  }
+
+  return { quote, approved: isApproved, score, responseId: response.id };
 }
 
 export { type FewShotExample } from "./prompt.js";

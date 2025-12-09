@@ -77,11 +77,34 @@ function initDb(): SqliteDatabase {
       score INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
       updatedAt TEXT DEFAULT NULL,
-      humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED'))
+      humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED')),
+      goldExampleType TEXT DEFAULT NULL CHECK(goldExampleType IN ('GOOD','BAD')),
+      goldExampleCorrection TEXT DEFAULT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tweets_id ON tweets(id);
+
+    CREATE TABLE IF NOT EXISTS config (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
+
+  // Ensure columns exist for existing databases (migration-like behavior)
+  ensureColumns(db);
+
   return db;
+}
+
+function ensureColumns(db: SqliteDatabase): void {
+  const columns = db.prepare("PRAGMA table_info(tweets)").all() as Array<{ name: string }>;
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has("goldExampleType")) {
+    db.exec("ALTER TABLE tweets ADD COLUMN goldExampleType TEXT DEFAULT NULL CHECK(goldExampleType IN ('GOOD','BAD'))");
+  }
+  if (!columnNames.has("goldExampleCorrection")) {
+    db.exec("ALTER TABLE tweets ADD COLUMN goldExampleCorrection TEXT DEFAULT NULL");
+  }
 }
 
 export function createTweetStore() {
@@ -305,6 +328,17 @@ export function createTweetStore() {
     },
     close() {
       db.close();
+    },
+    getConfig(key: string): string | null {
+      const row = db.prepare("SELECT value FROM config WHERE key = @key").get({ key }) as { value: string } | undefined;
+      return row?.value ?? null;
+    },
+    setConfig(key: string, value: string | null) {
+      if (value === null) {
+        db.prepare("DELETE FROM config WHERE key = @key").run({ key });
+      } else {
+        db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (@key, @value)").run({ key, value });
+      }
     },
   };
 }

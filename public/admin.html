@@ -536,10 +536,10 @@
           .map((tweet) => {
             const decisionValue = tweet.humanDecision || "";
             const isPending = tweet.approved === null;
+            // Map approved: null -> "pending", true -> "true", false -> "false" to match filter values
+            const approvedAttr = isPending ? "pending" : String(tweet.approved);
             return `
-            <tr data-approved="${
-              tweet.approved
-            }" data-human-decision="${escapeHtml(decisionValue || "UNSET")}" data-gold-example-type="${escapeHtml(tweet.goldExampleType || "")}">
+            <tr data-approved="${approvedAttr}" data-human-decision="${escapeHtml(decisionValue || "UNSET")}" data-gold-example-type="${escapeHtml(tweet.goldExampleType || "")}">
             <td>${escapeHtml(tweet.id)}</td>
             <td>
               <div class="cell-content" data-content-type="tweet">${escapeHtml(tweet.text)}</div>

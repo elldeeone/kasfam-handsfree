@@ -8,12 +8,23 @@ import {
   type TweetFilters,
   type PaginationOptions,
 } from "./tweetStore.js";
-import { askTweetDecision } from "./gptClient.js";
+import { askTweetDecision, MalformedResponseError, type FewShotExample } from "./gptClient.js";
 
 const PORT = Number(process.env.PORT) || 4000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const RESPONSE_ID_KEY = "previousResponseId";
 const app = express();
 const store = createTweetStore();
+
+function loadFewShotExamples(): FewShotExample[] {
+  const goldExamples = store.getGoldExamples();
+  return goldExamples.map(ex => ({
+    tweetText: ex.text,
+    response: ex.quote,
+    correction: ex.goldExampleCorrection ?? undefined,
+    type: ex.goldExampleType!,
+  }));
+}
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -121,10 +132,16 @@ app.post("/api/admin/tweets/:id/process", async (req, res) => {
   }
 
   try {
-    // Disable conversation memory for one-off server requests
-    const { quote, approved, score } = await askTweetDecision(tweet.text, {
-      useConversationMemory: false,
+    const fewShotExamples = loadFewShotExamples();
+    const previousResponseId = store.getConfig(RESPONSE_ID_KEY);
+
+    const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
+      examples: fewShotExamples,
+      previousResponseId,
     });
+
+    // Update conversation chain
+    store.setConfig(RESPONSE_ID_KEY, responseId);
 
     store.save({
       id: tweet.id,
@@ -137,6 +154,10 @@ app.post("/api/admin/tweets/:id/process", async (req, res) => {
 
     res.json({ success: true, approved, quote, score });
   } catch (error) {
+    if (error instanceof MalformedResponseError) {
+      console.error("Malformed response from model:", error.message);
+      return res.status(500).send(`Malformed AI response: ${error.message}`);
+    }
     console.error("Error processing tweet:", error);
     res.status(500).send("Failed to process tweet through AI model.");
   }
@@ -160,10 +181,16 @@ app.post("/tweets/:id/reeval", async (req, res) => {
   }
 
   try {
-    // Disable conversation memory for one-off server requests
-    const { quote, approved, score } = await askTweetDecision(tweet.text, {
-      useConversationMemory: false,
+    const fewShotExamples = loadFewShotExamples();
+    const previousResponseId = store.getConfig(RESPONSE_ID_KEY);
+
+    const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
+      examples: fewShotExamples,
+      previousResponseId,
     });
+
+    // Update conversation chain
+    store.setConfig(RESPONSE_ID_KEY, responseId);
 
     if (!approved) {
       return res.status(500).send("Re-evaluation resulted in rejection");
@@ -187,6 +214,9 @@ app.post("/tweets/:id/reeval", async (req, res) => {
 
     res.json(updatedTweet);
   } catch (error) {
+    if (error instanceof MalformedResponseError) {
+      return res.status(500).send(`Malformed AI response: ${error.message}`);
+    }
     const message =
       error instanceof Error ? error.message : "Unknown re-evaluation error";
     res.status(500).send(`Failed to re-evaluate tweet: ${message}`);

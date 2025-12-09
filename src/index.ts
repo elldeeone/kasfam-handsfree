@@ -1,7 +1,7 @@
 import "dotenv/config";
 import {
   askTweetDecision,
-  resetConversationMemory,
+  MalformedResponseError,
   type FewShotExample,
 } from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
@@ -19,6 +19,8 @@ type Tweet = {
 type TweetSource = "kaspa-news" | "x-api" | "both";
 
 type TweetStore = ReturnType<typeof createTweetStore>;
+
+const RESPONSE_ID_KEY = "previousResponseId";
 
 function log(msg: string) {
   console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
@@ -200,6 +202,16 @@ function parseArgs(): ParsedArgs {
   return parsed;
 }
 
+function loadFewShotExamples(store: TweetStore): FewShotExample[] {
+  const goldExamples = store.getGoldExamples();
+  return goldExamples.map(ex => ({
+    tweetText: ex.text,
+    response: ex.quote,
+    correction: ex.goldExampleCorrection ?? undefined,
+    type: ex.goldExampleType!,
+  }));
+}
+
 async function main() {
   const { source, limit, tweetIds } = parseArgs();
   log(`Using source: ${source}`);
@@ -221,13 +233,7 @@ async function main() {
     log(`Saved ${tweets.length} tweets to database`);
 
     // load gold examples for few-shot learning
-    const goldExamples = store.getGoldExamples();
-    const fewShotExamples: FewShotExample[] = goldExamples.map(ex => ({
-      tweetText: ex.text,
-      response: ex.quote,
-      correction: ex.goldExampleCorrection ?? undefined,
-      type: ex.goldExampleType!,
-    }));
+    const fewShotExamples = loadFewShotExamples(store);
     if (fewShotExamples.length > 0) {
       log(`Loaded ${fewShotExamples.length} gold examples for few-shot learning`);
     }
@@ -253,10 +259,13 @@ async function main() {
 
     log(`Found ${tweetsToProcess.length} tweets needing evaluation`);
 
-    // Reset conversation memory at start of session
-    // This allows the model to build context across tweets for better percentile calibration
-    resetConversationMemory();
-    log(`Initialized conversation memory for percentile calibration`);
+    // Load persistent conversation memory from database
+    let previousResponseId = store.getConfig(RESPONSE_ID_KEY);
+    if (previousResponseId) {
+      log(`Resuming conversation chain from: ${previousResponseId.slice(-8)}`);
+    } else {
+      log(`Starting new conversation chain`);
+    }
 
     // Process tweets one at a time (conversation memory accumulates context)
     let approvedCount = 0;
@@ -268,36 +277,50 @@ async function main() {
 
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
 
-      const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
-        examples: fewShotExamples,
-        useConversationMemory: true,
-      });
+      try {
+        const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
+          examples: fewShotExamples,
+          previousResponseId,
+        });
 
-      log(`  [chain: ${responseId.slice(-8)}]`);  // Last 8 chars of response ID for brevity
+        // Update conversation chain
+        previousResponseId = responseId;
+        store.setConfig(RESPONSE_ID_KEY, responseId);
 
-      const payload: TweetDecisionInput = {
-        id: tweet.id,
-        text: tweet.text,
-        url: tweet.url,
-        quote: quote ?? "",
-        approved,
-        score,
-      };
+        log(`  [chain: ${responseId.slice(-8)}]`);  // Last 8 chars of response ID for brevity
 
-      store.save(payload);
+        const payload: TweetDecisionInput = {
+          id: tweet.id,
+          text: tweet.text,
+          url: tweet.url,
+          quote: quote ?? "",
+          approved,
+          score,
+        };
 
-      // Log result
-      if (approved) {
-        approvedCount++;
-        const qtMatch = quote.match(/QT:\s*(.+?)(?=\nPercentile:|$)/is);
-        const qt = qtMatch ? qtMatch[1].trim() : "";
-        log(`✓ APPROVED (Percentile: ${score})`);
-        log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
-        log(`  QT: ${qt}`);
-      } else {
-        rejectedCount++;
-        log(`✗ REJECTED: ${quote}`);
-        log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+        store.save(payload);
+
+        // Log result
+        if (approved) {
+          approvedCount++;
+          const qtMatch = quote.match(/QT:\s*(.+?)(?=\nPercentile:|$)/is);
+          const qt = qtMatch ? qtMatch[1].trim() : "";
+          log(`✓ APPROVED (Percentile: ${score})`);
+          log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+          log(`  QT: ${qt}`);
+        } else {
+          rejectedCount++;
+          log(`✗ REJECTED: ${quote}`);
+          log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+        }
+      } catch (error) {
+        if (error instanceof MalformedResponseError) {
+          log(`⚠ MALFORMED RESPONSE for tweet ${tweet.id}: ${error.message}`);
+          log(`  Raw response: ${error.rawResponse.slice(0, 100)}...`);
+          // Don't save - leave tweet unprocessed for retry
+          continue;
+        }
+        throw error;
       }
     }
 
