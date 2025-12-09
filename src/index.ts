@@ -270,6 +270,7 @@ async function main() {
     // Process tweets one at a time (conversation memory accumulates context)
     let approvedCount = 0;
     let rejectedCount = 0;
+    let skippedCount = 0;
 
     for (let i = 0; i < tweetsToProcess.length; i++) {
       const tweet = tweetsToProcess[i];
@@ -315,6 +316,7 @@ async function main() {
         }
       } catch (error) {
         if (error instanceof MalformedResponseError) {
+          skippedCount++;
           log(`⚠ MALFORMED RESPONSE for tweet ${tweet.id}: ${error.message}`);
           log(`  Raw response: ${error.rawResponse.slice(0, 100)}...`);
           // Don't save - leave tweet unprocessed for retry
@@ -324,9 +326,10 @@ async function main() {
       }
     }
 
+    const processedCount = approvedCount + rejectedCount;
     log(`\n━━━ Summary ━━━`);
-    log(`Processed ${tweetsToProcess.length} tweets`);
-    log(`Approved: ${approvedCount} | Rejected: ${rejectedCount}`);
+    log(`Processed ${processedCount} of ${tweetsToProcess.length} tweets`);
+    log(`Approved: ${approvedCount} | Rejected: ${rejectedCount}${skippedCount > 0 ? ` | Skipped: ${skippedCount}` : ""}`);
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
