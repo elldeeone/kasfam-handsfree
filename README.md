@@ -124,12 +124,25 @@ npm run web
 
 Then visit `http://localhost:4000`. Use the filter controls to narrow results by the model's `approved` status or by the `humanDecision` column (Approved, Rejected, or Unset). Each row exposes a dropdown that lets you set the human decision to `APPROVED` or `REJECTED`; changes persist immediately to the SQLite database.
 
+### Gold Examples (Few-shot Learning)
+
+Mark tweets as `GOOD` or `BAD` examples to help calibrate the model. The 5 most recent examples of each type are injected into the GPT prompt as few-shot examples. BAD examples require a rejection reason (e.g., "Rejected: price action focus").
+
+In the admin UI, use the Gold Example dropdown on any tweet. Filter by gold example status using the filter controls.
+
+### Scoring
+
+Tweets receive a percentile-based score (0-100) indicating quality relative to previously evaluated tweets. The model maintains conversation memory to track score distribution and calibrate consistently. Click the Score/Created/Updated column headers in the admin view to sort.
+
 ### REST API
 
 The moderation UI consumes the `/api/tweets` endpoint, which you can also call directly. Query parameters:
 
 - `approved`: `true`, `false`, or omit for all results.
 - `humanDecision`: `APPROVED`, `REJECTED`, `UNSET`, or omit.
+- `goldExample`: `GOOD`, `BAD`, `ANY`, `NONE`, or omit.
+- `orderBy`: `score`, `createdAt`, `updatedAt` (default).
+- `orderDir`: `asc`, `desc` (default).
 - `page` (default `1`): 1-based page number.
 - `pageSize` (default `20`, max `100`): number of rows per page.
 - `password`: required if `ADMIN_PASSWORD` is set and you need access to the protected `quote` text.
@@ -145,8 +158,12 @@ The response includes the requested rows plus pagination metadata:
       "quote": "...",
       "url": "...",
       "approved": true,
+      "score": 75,
       "createdAt": "2024-01-01T00:00:00Z",
-      "humanDecision": "APPROVED"
+      "updatedAt": "2024-01-01T00:00:00Z",
+      "humanDecision": "APPROVED",
+      "goldExampleType": null,
+      "goldExampleCorrection": null
     }
   ],
   "pagination": {

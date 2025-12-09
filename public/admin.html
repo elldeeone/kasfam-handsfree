@@ -27,6 +27,20 @@
       th {
         background: #1e293b;
       }
+      th.sortable {
+        cursor: pointer;
+        user-select: none;
+      }
+      th.sortable:hover {
+        background: #334155;
+      }
+      th.sortable .sort-arrow {
+        margin-left: 0.25rem;
+        opacity: 0.3;
+      }
+      th.sortable.active .sort-arrow {
+        opacity: 1;
+      }
       tr:nth-child(odd) {
         background: #0f172a;
       }
@@ -312,13 +326,13 @@
           <th>ID</th>
           <th>Tweet</th>
           <th>Quote</th>
-          <th>Score</th>
+          <th class="sortable" data-sort="score">Score<span class="sort-arrow">▼</span></th>
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
           <th>Gold Example</th>
-          <th>Created</th>
-          <th>Updated</th>
+          <th class="sortable" data-sort="createdAt">Created<span class="sort-arrow">▼</span></th>
+          <th class="sortable active" data-sort="updatedAt">Updated<span class="sort-arrow">▼</span></th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -375,7 +389,14 @@
       const filterApproved = document.getElementById("filter-approved");
       const filterHuman = document.getElementById("filter-human");
       const filterGold = document.getElementById("filter-gold");
+      const sortableHeaders = document.querySelectorAll("th.sortable");
       const refreshBtn = document.getElementById("refresh-btn");
+
+      // Sort state
+      const sortState = {
+        orderBy: "updatedAt",
+        orderDir: "desc",
+      };
       const loadingIndicator = document.getElementById("loading");
       const goldCountsDisplay = document.getElementById("gold-counts");
       const passwordInput = document.getElementById("admin-password");
@@ -417,6 +438,18 @@
         setSelectFromParam(filterApproved, params.get("approved"));
         setSelectFromParam(filterHuman, params.get("humanDecision"));
         setSelectFromParam(filterGold, params.get("goldExample"));
+
+        // Apply sort from URL
+        const urlOrderBy = params.get("orderBy");
+        const urlOrderDir = params.get("orderDir");
+        if (urlOrderBy && ["score", "createdAt", "updatedAt"].includes(urlOrderBy)) {
+          sortState.orderBy = urlOrderBy;
+        }
+        if (urlOrderDir && ["asc", "desc"].includes(urlOrderDir)) {
+          sortState.orderDir = urlOrderDir;
+        }
+        updateSortHeaders();
+
         const urlPage = parsePositiveInteger(params.get("page"));
         const urlPageSize = parsePositiveInteger(params.get("pageSize"));
 
@@ -430,15 +463,45 @@
         }
       }
 
-      function setSelectFromParam(selectEl, value) {
+      function updateSortHeaders() {
+        sortableHeaders.forEach(th => {
+          const field = th.dataset.sort;
+          const arrow = th.querySelector(".sort-arrow");
+          if (field === sortState.orderBy) {
+            th.classList.add("active");
+            arrow.textContent = sortState.orderDir === "asc" ? "▲" : "▼";
+          } else {
+            th.classList.remove("active");
+            arrow.textContent = "▼";
+          }
+        });
+      }
+
+      function handleSortClick(th) {
+        const field = th.dataset.sort;
+        if (sortState.orderBy === field) {
+          // Toggle direction
+          sortState.orderDir = sortState.orderDir === "desc" ? "asc" : "desc";
+        } else {
+          // New field, default to desc
+          sortState.orderBy = field;
+          sortState.orderDir = "desc";
+        }
+        updateSortHeaders();
+        paginationState.page = 1;
+        updateUrlFromFilters();
+        fetchTweets();
+      }
+
+      function setSelectFromParam(selectEl, value, defaultValue = "all") {
         if (!value) {
-          selectEl.value = "all";
+          selectEl.value = defaultValue;
           return;
         }
         const optionExists = Array.from(selectEl.options).some(
           (opt) => opt.value === value
         );
-        selectEl.value = optionExists ? value : "all";
+        selectEl.value = optionExists ? value : defaultValue;
       }
 
       function updateUrlFromFilters() {
@@ -446,6 +509,8 @@
         syncFilterParam(params, "approved", filterApproved.value);
         syncFilterParam(params, "humanDecision", filterHuman.value);
         syncFilterParam(params, "goldExample", filterGold.value);
+        syncSortParam(params, "orderBy", sortState.orderBy, "updatedAt");
+        syncSortParam(params, "orderDir", sortState.orderDir, "desc");
         params.set("page", String(paginationState.page));
         params.set("pageSize", String(paginationState.pageSize));
         const newSearch = params.toString();
@@ -453,6 +518,14 @@
           newSearch ? `?${newSearch}` : ""
         }${window.location.hash}`;
         window.history.replaceState({}, "", newUrl);
+      }
+
+      function syncSortParam(params, key, value, defaultValue) {
+        if (value && value !== defaultValue) {
+          params.set(key, value);
+        } else {
+          params.delete(key);
+        }
       }
 
       function syncFilterParam(params, key, value) {
@@ -492,6 +565,8 @@
           params.append("humanDecision", filterHuman.value);
         if (filterGold.value !== "all")
           params.append("goldExample", filterGold.value);
+        params.append("orderBy", sortState.orderBy);
+        params.append("orderDir", sortState.orderDir);
         params.append("page", String(paginationState.page));
         params.append("pageSize", String(paginationState.pageSize));
 
@@ -996,6 +1071,9 @@
       filterApproved.addEventListener("change", handleFilterChange);
       filterHuman.addEventListener("change", handleFilterChange);
       filterGold.addEventListener("change", handleFilterChange);
+      sortableHeaders.forEach(th => {
+        th.addEventListener("click", () => handleSortClick(th));
+      });
       refreshBtn.addEventListener("click", () => {
         updateUrlFromFilters();
         fetchTweets();

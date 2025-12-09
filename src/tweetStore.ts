@@ -42,6 +42,14 @@ export type TweetFilters = {
   hasGoldExample?: boolean;
 };
 
+export type SortField = "score" | "createdAt" | "updatedAt";
+export type SortDirection = "asc" | "desc";
+
+export type SortOptions = {
+  orderBy?: SortField;
+  orderDir?: SortDirection;
+};
+
 export type PaginationOptions = {
   page?: number;
   pageSize?: number;
@@ -149,7 +157,7 @@ export function createTweetStore() {
         approved: decision.approved ? 1 : 0,
       });
     },
-    list(filters: TweetFilters = {}, pagination?: PaginationOptions) {
+    list(filters: TweetFilters = {}, pagination?: PaginationOptions, sort?: SortOptions) {
       const normalizedPagination = normalizePagination(pagination);
       const where: string[] = [];
       const params: Record<string, unknown> = {};
@@ -189,10 +197,28 @@ export function createTweetStore() {
         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
       `;
 
+      // Build ORDER BY clause
+      const orderBy = sort?.orderBy ?? "updatedAt";
+      const orderDir = sort?.orderDir ?? "desc";
+      const dirSql = orderDir === "asc" ? "ASC" : "DESC";
+      let orderBySql: string;
+      switch (orderBy) {
+        case "score":
+          orderBySql = `score ${dirSql}`;
+          break;
+        case "createdAt":
+          orderBySql = `datetime(createdAt) ${dirSql}`;
+          break;
+        case "updatedAt":
+        default:
+          orderBySql = `datetime(COALESCE(updatedAt, createdAt)) ${dirSql}`;
+          break;
+      }
+
       const sql = `
         SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
         ${baseQuery}
-        ORDER BY datetime(COALESCE(updatedAt, createdAt)) DESC
+        ORDER BY ${orderBySql}
         LIMIT @limit OFFSET @offset
       `;
 
