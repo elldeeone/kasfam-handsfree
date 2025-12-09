@@ -212,6 +212,39 @@ app.post("/api/admin/tweets/:id/gold-example", (req, res) => {
   res.json({ success: true, goldExampleType: normalized });
 });
 
+// Get gold example counts (public)
+app.get("/api/gold-examples/counts", (_req, res) => {
+  const goodExamples = store.getGoldExamples("GOOD");
+  const badExamples = store.getGoldExamples("BAD");
+
+  res.json({
+    good: goodExamples.length,
+    bad: badExamples.length,
+    maxPerType: 5,
+    oldestGood: goodExamples.length > 0 ? goodExamples[goodExamples.length - 1]?.updatedAt : null,
+    oldestBad: badExamples.length > 0 ? badExamples[badExamples.length - 1]?.updatedAt : null,
+  });
+});
+
+// Get gold example counts (admin - same as public for now)
+app.get("/api/admin/gold-examples/counts", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const goodExamples = store.getGoldExamples("GOOD");
+  const badExamples = store.getGoldExamples("BAD");
+
+  res.json({
+    good: goodExamples.length,
+    bad: badExamples.length,
+    maxPerType: 5,
+    oldestGood: goodExamples.length > 0 ? goodExamples[goodExamples.length - 1]?.updatedAt : null,
+    oldestBad: badExamples.length > 0 ? badExamples[badExamples.length - 1]?.updatedAt : null,
+  });
+});
+
 // Get all gold examples
 app.get("/api/admin/gold-examples", (req, res) => {
   const password = req.query.password as string;
@@ -253,6 +286,8 @@ function parseFilters(query: any): FilterParseResult {
     typeof query.approved === "string" ? query.approved : "all";
   const humanParam =
     typeof query.humanDecision === "string" ? query.humanDecision : "all";
+  const goldParam =
+    typeof query.goldExample === "string" ? query.goldExample : "all";
   const pageParam = typeof query.page === "string" ? query.page : undefined;
   const pageSizeParam =
     typeof query.pageSize === "string" ? query.pageSize : undefined;
@@ -271,6 +306,14 @@ function parseFilters(query: any): FilterParseResult {
     humanParam === "UNSET"
   ) {
     filters.humanDecision = humanParam as TweetFilters["humanDecision"];
+  }
+
+  if (goldParam === "GOOD" || goldParam === "BAD") {
+    filters.goldExampleType = goldParam as TweetFilters["goldExampleType"];
+  } else if (goldParam === "ANY") {
+    filters.hasGoldExample = true;
+  } else if (goldParam === "NONE") {
+    filters.hasGoldExample = false;
   }
 
   const pagination: PaginationOptions = {};

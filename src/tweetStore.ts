@@ -37,6 +37,8 @@ export type TweetFilters = {
   approved?: boolean;
   humanDecision?: HumanDecision | "UNSET";
   hasModelDecision?: boolean;
+  goldExampleType?: GoldExampleType;
+  hasGoldExample?: boolean;
 };
 
 export type PaginationOptions = {
@@ -138,6 +140,15 @@ export function createTweetStore() {
         params.humanDecision = filters.humanDecision;
       } else if (filters.humanDecision === "UNSET") {
         where.push("humanDecision IS NULL");
+      }
+
+      if (filters.goldExampleType) {
+        where.push("goldExampleType = @goldExampleType");
+        params.goldExampleType = filters.goldExampleType;
+      } else if (filters.hasGoldExample === true) {
+        where.push("goldExampleType IS NOT NULL");
+      } else if (filters.hasGoldExample === false) {
+        where.push("goldExampleType IS NULL");
       }
 
       const baseQuery = `
