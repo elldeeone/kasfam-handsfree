@@ -1,6 +1,6 @@
 export type FewShotExample = {
   tweetText: string;
-  response: string;  // The full "Approved.\nQT: ...\nScore: X" for GOOD examples
+  response: string;  // The full "Approved.\nQT: ...\nPercentile: X" for GOOD examples
   correction?: string;  // The correction "Rejected: reason" for BAD examples
   type: "GOOD" | "BAD";
 };
@@ -58,11 +58,17 @@ if rejecting:
 if approving:
 \`Approved.
 QT: <one or two lines, together ≤20 words>
-Score: <Score from 1 to 10 that measures the quality of the content (10 is the best score)>\`
+Percentile: <0-100, estimating what % of typical approved tweets this is better than>\`
 
 no other lines. no commentary. no explanations. no empty lines between.
 
-Note: If a tweet gets a score of 1, it doesn't mean there's something wrong with it. Only give high score to exceptionally good tweets.
+percentile guidance:
+- 50 = median quality approved tweet
+- 70-80 = solid, above average
+- 90+ = exceptional, best-of-the-best
+- below 50 = weaker but still worth approving
+
+use the gold examples and any previous tweets in this session to calibrate your percentile estimates. be consistent.
 
 qt rules (where your roleplay lives)
 
@@ -132,6 +138,7 @@ Rejected: <one short reason>.
 if approving:
 Approved.
 QT: <one or two lines, together ≤20 words, containing both insight and anchor keywords>
+Percentile: <0-100>
 
 end there.
 `;
