@@ -77,11 +77,43 @@ function initDb(): SqliteDatabase {
       score INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
       updatedAt TEXT DEFAULT NULL,
-      humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED'))
+      humanDecision TEXT DEFAULT NULL CHECK(humanDecision IN ('APPROVED','REJECTED')),
+      goldExampleType TEXT DEFAULT NULL CHECK(goldExampleType IN ('GOOD','BAD')),
+      goldExampleCorrection TEXT DEFAULT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tweets_id ON tweets(id);
+    CREATE INDEX IF NOT EXISTS idx_tweets_gold_example ON tweets(goldExampleType)
+      WHERE goldExampleType IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS config (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
+
+  // Ensure columns and indexes exist for existing databases (migration-like behavior)
+  ensureColumnsAndIndexes(db);
+
   return db;
+}
+
+function ensureColumnsAndIndexes(db: SqliteDatabase): void {
+  const columns = db.prepare("PRAGMA table_info(tweets)").all() as Array<{ name: string }>;
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has("goldExampleType")) {
+    db.exec("ALTER TABLE tweets ADD COLUMN goldExampleType TEXT DEFAULT NULL CHECK(goldExampleType IN ('GOOD','BAD'))");
+  }
+  if (!columnNames.has("goldExampleCorrection")) {
+    db.exec("ALTER TABLE tweets ADD COLUMN goldExampleCorrection TEXT DEFAULT NULL");
+  }
+
+  // Ensure partial index exists for gold example filtering
+  const indexes = db.prepare("PRAGMA index_list(tweets)").all() as Array<{ name: string }>;
+  const indexNames = new Set(indexes.map((i) => i.name));
+  if (!indexNames.has("idx_tweets_gold_example")) {
+    db.exec("CREATE INDEX idx_tweets_gold_example ON tweets(goldExampleType) WHERE goldExampleType IS NOT NULL");
+  }
 }
 
 export function createTweetStore() {
@@ -305,6 +337,17 @@ export function createTweetStore() {
     },
     close() {
       db.close();
+    },
+    getConfig(key: string): string | null {
+      const row = db.prepare("SELECT value FROM config WHERE key = @key").get({ key }) as { value: string } | undefined;
+      return row?.value ?? null;
+    },
+    setConfig(key: string, value: string | null) {
+      if (value === null) {
+        db.prepare("DELETE FROM config WHERE key = @key").run({ key });
+      } else {
+        db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (@key, @value)").run({ key, value });
+      }
     },
   };
 }

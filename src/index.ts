@@ -1,5 +1,9 @@
 import "dotenv/config";
-import { askTweetDecision, type FewShotExample } from "./gptClient.js";
+import {
+  askTweetDecision,
+  MalformedResponseError,
+  type FewShotExample,
+} from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
 import { createXClient } from "./xClient.js";
 
@@ -15,6 +19,8 @@ type Tweet = {
 type TweetSource = "kaspa-news" | "x-api" | "both";
 
 type TweetStore = ReturnType<typeof createTweetStore>;
+
+const RESPONSE_ID_KEY = "previousResponseId";
 
 function log(msg: string) {
   console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
@@ -167,6 +173,13 @@ async function getTweetsFeed(source: TweetSource, limit?: number): Promise<Tweet
   }
 
   log(`Total unique tweets: ${tweets.length}`);
+
+  // Apply limit after combining all sources
+  if (limit !== undefined && limit > 0 && tweets.length > limit) {
+    log(`Limiting to ${limit} tweets`);
+    return tweets.slice(0, limit);
+  }
+
   return tweets;
 }
 
@@ -256,11 +269,6 @@ function validateArguments(parsed: ParsedArgs): void {
   if (parsed.limit !== undefined && parsed.tweetIds !== undefined) {
     console.warn('Warning: both --limit and --tweet-id provided. --tweet-id takes precedence, --limit will be ignored.');
   }
-
-  // warn if using limit/tweetIds with x-api source
-  if (parsed.source === "x-api" && (parsed.limit !== undefined || parsed.tweetIds !== undefined)) {
-    console.warn('Warning: --limit and --tweet-id only apply to kaspa-news source, not x-api.');
-  }
 }
 
 function parseArgs(): ParsedArgs {
@@ -268,6 +276,16 @@ function parseArgs(): ParsedArgs {
   const parsed = extractArguments(args);
   validateArguments(parsed);
   return parsed;
+}
+
+function loadFewShotExamples(store: TweetStore): FewShotExample[] {
+  const goldExamples = store.getGoldExamples();
+  return goldExamples.map(ex => ({
+    tweetText: ex.text,
+    response: ex.quote,
+    correction: ex.goldExampleCorrection ?? undefined,
+    type: ex.goldExampleType!,
+  }));
 }
 
 async function main() {
@@ -291,63 +309,103 @@ async function main() {
     log(`Saved ${tweets.length} tweets to database`);
 
     // load gold examples for few-shot learning
-    const goldExamples = store.getGoldExamples();
-    const fewShotExamples: FewShotExample[] = goldExamples.map(ex => ({
-      tweetText: ex.text,
-      response: ex.quote,
-      correction: ex.goldExampleCorrection ?? undefined,
-      type: ex.goldExampleType!,
-    }));
+    const fewShotExamples = loadFewShotExamples(store);
     if (fewShotExamples.length > 0) {
       log(`Loaded ${fewShotExamples.length} gold examples for few-shot learning`);
     }
 
-    for (let i = 0; i < tweets.length; i++) {
-      const tweet = tweets[i];
-      log(`Reading tweet ${i + 1} of ${tweets.length}`);
-
-      if (tweet.author.username == "kaspaunchained") {
-        log(`Skipping self-tweet`);
+    // Filter tweets that need processing
+    const tweetsToProcess: Tweet[] = [];
+    for (const tweet of tweets) {
+      if (tweet.author.username === "kaspaunchained") {
+        log(`Skipping self-tweet: ${tweet.id}`);
         continue;
       }
-
       if (store.hasModelDecision(tweet.id)) {
         log(`Skipping tweet ${tweet.id} (already has model decision)`);
         continue;
       }
-
-      log(`Sending question to GPT-5.1...`);
-      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      const { quote, approved, score } = await askTweetDecision(tweet.text, {
-        examples: fewShotExamples,
-      });
-
-      const payload: TweetDecisionInput = {
-        ...tweet,
-        quote: quote ?? "",
-        approved,
-        score,
-      };
-
-      store.save(payload);
-
-      if (!approved) {
-        continue;
-      }
-
-      log(`Question: ${tweet.text}`);
-
-      log(`Approved status: ${approved}`);
-
-      if (!quote) {
-        console.warn("No textual output returned by the model.");
-        process.exitCode = 2;
-        return;
-      }
-
-      log("=== GPT-5.1 Response ===");
-      log(quote);
+      tweetsToProcess.push(tweet);
     }
+
+    if (tweetsToProcess.length === 0) {
+      log("No new tweets to process.");
+      return;
+    }
+
+    log(`Found ${tweetsToProcess.length} tweets needing evaluation`);
+
+    // Load persistent conversation memory from database
+    let previousResponseId = store.getConfig(RESPONSE_ID_KEY);
+    if (previousResponseId) {
+      log(`Resuming conversation chain from: ${previousResponseId.slice(-8)}`);
+    } else {
+      log(`Starting new conversation chain`);
+    }
+
+    // Process tweets one at a time (conversation memory accumulates context)
+    let approvedCount = 0;
+    let rejectedCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 0; i < tweetsToProcess.length; i++) {
+      const tweet = tweetsToProcess[i];
+      log(`\n[${i + 1}/${tweetsToProcess.length}] Evaluating tweet...`);
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+
+      try {
+        const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
+          examples: fewShotExamples,
+          previousResponseId,
+        });
+
+        // Update conversation chain
+        previousResponseId = responseId;
+        store.setConfig(RESPONSE_ID_KEY, responseId);
+
+        log(`  [chain: ${responseId.slice(-8)}]`);  // Last 8 chars of response ID for brevity
+
+        const payload: TweetDecisionInput = {
+          id: tweet.id,
+          text: tweet.text,
+          url: tweet.url,
+          quote: quote ?? "",
+          approved,
+          score,
+        };
+
+        store.save(payload);
+
+        // Log result
+        if (approved) {
+          approvedCount++;
+          const qtMatch = quote.match(/QT:\s*(.+?)(?=\nPercentile:|$)/is);
+          const qt = qtMatch ? qtMatch[1].trim() : "";
+          log(`✓ APPROVED (Percentile: ${score})`);
+          log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+          log(`  QT: ${qt}`);
+        } else {
+          rejectedCount++;
+          log(`✗ REJECTED: ${quote}`);
+          log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+        }
+      } catch (error) {
+        if (error instanceof MalformedResponseError) {
+          skippedCount++;
+          log(`⚠ MALFORMED RESPONSE for tweet ${tweet.id}: ${error.message}`);
+          log(`  Raw response: ${error.rawResponse.slice(0, 100)}...`);
+          // Don't save - leave tweet unprocessed for retry
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    const processedCount = approvedCount + rejectedCount;
+    log(`\n━━━ Summary ━━━`);
+    log(`Processed ${processedCount} of ${tweetsToProcess.length} tweets`);
+    log(`Approved: ${approvedCount} | Rejected: ${rejectedCount}${skippedCount > 0 ? ` | Skipped: ${skippedCount}` : ""}`);
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);
