@@ -26,7 +26,7 @@ function log(msg: string) {
   console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
 }
 
-async function getKaspaNewsTweets(limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
+async function getKaspaNewsFeed(limit?: number): Promise<Tweet[]> {
   const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
     headers: { Accept: "application/json" },
   });
@@ -38,19 +38,6 @@ async function getKaspaNewsTweets(limit?: number, tweetIds?: string[]): Promise<
   const response = await res.json();
   const allTweets = response.tweets ?? [];
 
-  // filter by tweet ids if specified
-  if (tweetIds !== undefined && tweetIds.length > 0) {
-    const tweets = allTweets.filter((t: Tweet) => tweetIds.includes(t.id));
-    const foundIds = tweets.map((t: Tweet) => t.id);
-    const notFoundIds = tweetIds.filter(id => !foundIds.includes(id));
-
-    if (notFoundIds.length > 0) {
-      throw new Error(`Tweet ID(s) not found: ${notFoundIds.join(', ')}`);
-    }
-
-    return tweets;
-  }
-
   // apply client-side limiting if specified
   if (limit !== undefined && limit > 0) {
     return allTweets.slice(0, limit);
@@ -59,12 +46,92 @@ async function getKaspaNewsTweets(limit?: number, tweetIds?: string[]): Promise<
   return allTweets;
 }
 
-async function getXApiTweets(): Promise<Tweet[]> {
+// Returns { found, notFound } - does not throw on missing IDs
+async function findTweetsInKaspaNews(tweetIds: string[]): Promise<{ found: Tweet[]; notFound: string[] }> {
+  const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch kaspa tweets: ${res.status} ${res.statusText}`
+    );
+  }
+  const response = await res.json();
+  const allTweets = response.tweets ?? [];
+
+  const found = allTweets.filter((t: Tweet) => tweetIds.includes(t.id));
+  const foundIds = found.map((t: Tweet) => t.id);
+  const notFound = tweetIds.filter(id => !foundIds.includes(id));
+
+  return { found, notFound };
+}
+
+async function getXApiFeed(): Promise<Tweet[]> {
   const client = createXClient();
   return await client.searchTweets();
 }
 
-async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
+async function getXApiTweetsByIds(tweetIds: string[]): Promise<Tweet[]> {
+  const client = createXClient();
+  return await client.getTweetsByIds(tweetIds);
+}
+
+// Fetch tweets by specific IDs based on source preference
+async function getTweetsByIds(source: TweetSource, tweetIds: string[]): Promise<Tweet[]> {
+  if (source === "kaspa-news") {
+    // kaspa-news only: error if not found
+    const { found, notFound } = await findTweetsInKaspaNews(tweetIds);
+    if (notFound.length > 0) {
+      throw new Error(`Tweet ID(s) not found in kaspa.news: ${notFound.join(', ')}`);
+    }
+    log(`Found ${found.length} tweets in kaspa.news`);
+    return found;
+  }
+
+  if (source === "x-api") {
+    // X API only: fetch directly by ID
+    const tweets = await getXApiTweetsByIds(tweetIds);
+    log(`Fetched ${tweets.length} tweets from X API`);
+    if (tweets.length < tweetIds.length) {
+      const foundIds = tweets.map(t => t.id);
+      const notFound = tweetIds.filter(id => !foundIds.includes(id));
+      throw new Error(`Tweet ID(s) not found in X API: ${notFound.join(', ')}`);
+    }
+    return tweets;
+  }
+
+  // source === "both": try kaspa.news first, fallback to X API for missing
+  const { found, notFound } = await findTweetsInKaspaNews(tweetIds);
+  if (found.length > 0) {
+    log(`Found ${found.length} tweets in kaspa.news`);
+  }
+
+  if (notFound.length > 0) {
+    log(`${notFound.length} tweets not in kaspa.news, checking X API...`);
+    try {
+      const xApiTweets = await getXApiTweetsByIds(notFound);
+      log(`Fetched ${xApiTweets.length} tweets from X API`);
+      found.push(...xApiTweets);
+
+      // Check if any are still missing
+      const allFoundIds = found.map(t => t.id);
+      const stillMissing = tweetIds.filter(id => !allFoundIds.includes(id));
+      if (stillMissing.length > 0) {
+        throw new Error(`Tweet ID(s) not found in any source: ${stillMissing.join(', ')}`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        throw error;
+      }
+      throw new Error(`Failed to fetch from X API: ${error}`);
+    }
+  }
+
+  return found;
+}
+
+// Fetch tweets from feed (no specific IDs)
+async function getTweetsFeed(source: TweetSource, limit?: number): Promise<Tweet[]> {
   const tweets: Tweet[] = [];
   const seenIds = new Set<string>();
 
@@ -79,8 +146,7 @@ async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[
 
   if (source === "kaspa-news" || source === "both") {
     try {
-      // Don't apply limit here - apply it at the end after combining sources
-      const kaspaNewsTweets = await getKaspaNewsTweets(undefined, tweetIds);
+      const kaspaNewsTweets = await getKaspaNewsFeed();
       log(`Fetched ${kaspaNewsTweets.length} tweets from kaspa.news`);
       addTweets(kaspaNewsTweets);
     } catch (error) {
@@ -94,7 +160,7 @@ async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[
 
   if (source === "x-api" || source === "both") {
     try {
-      const xApiTweets = await getXApiTweets();
+      const xApiTweets = await getXApiFeed();
       log(`Fetched ${xApiTweets.length} tweets from X API`);
       addTweets(xApiTweets);
     } catch (error) {
@@ -115,6 +181,16 @@ async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[
   }
 
   return tweets;
+}
+
+async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
+  // If specific tweet IDs requested, use ID-based lookup
+  if (tweetIds !== undefined && tweetIds.length > 0) {
+    return getTweetsByIds(source, tweetIds);
+  }
+
+  // Otherwise fetch from feed
+  return getTweetsFeed(source, limit);
 }
 
 type ParsedArgs = {

@@ -95,8 +95,42 @@ export function createXClient(credentials?: OAuth1Credentials) {
     return tweets;
   }
 
+  async function getTweetsByIds(ids: string[]): Promise<XTweet[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    // Twitter API v2 supports up to 100 IDs per request
+    const result = await readOnlyClient.v2.tweets(ids, {
+      "tweet.fields": ["author_id", "created_at"],
+      expansions: ["author_id"],
+      "user.fields": ["username"],
+    });
+
+    const users = new Map<string, string>();
+    if (result.includes?.users) {
+      for (const user of result.includes.users) {
+        users.set(user.id, user.username);
+      }
+    }
+
+    const tweets: XTweet[] = [];
+    for (const tweet of result.data ?? []) {
+      const username = users.get(tweet.author_id ?? "") ?? "unknown";
+      tweets.push({
+        id: tweet.id,
+        text: tweet.text,
+        url: `https://x.com/${username}/status/${tweet.id}`,
+        author: { username },
+      });
+    }
+
+    return tweets;
+  }
+
   return {
     searchTweets,
+    getTweetsByIds,
   };
 }
 

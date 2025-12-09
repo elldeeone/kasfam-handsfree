@@ -66,14 +66,23 @@ npm run dev -- --source both
 # process only the latest 50 tweets
 npm run dev -- --limit 50
 
-# process a specific tweet by id
+# process a specific tweet by id (searches kaspa.news by default)
 npm run dev -- --tweet-id 1992657727361868193
 
 # process multiple tweets by id (comma-separated)
 npm run dev -- --tweet-id 1992657727361868193,1992726968492786130,1992637633194016807
+
+# fetch tweet directly from X API by id
+npm run dev -- --tweet-id 1992657727361868193 --source x-api
+
+# try kaspa.news first, fallback to X API if not found
+npm run dev -- --tweet-id 1992657727361868193 --source both
 ```
 
-**Note:** `--limit` and `--tweet-id` only apply to the kaspa-news source.
+**Note:** `--limit` only applies to feed fetching, not `--tweet-id`. When using `--tweet-id`:
+- `--source kaspa-news` (default): searches kaspa.news only, errors if not found
+- `--source x-api`: fetches directly from X API by ID
+- `--source both`: tries kaspa.news first, falls back to X API for any missing IDs
 
 The system prompt lives in `src/prompt.ts`. Edit that file if you need a different tone or instruction set. The script prints the model's answer to stdout and falls back to dumping the raw response if no text output is available.
 
