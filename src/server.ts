@@ -4,6 +4,7 @@ import path from "path";
 import {
   createTweetStore,
   type HumanDecision,
+  type GoldExampleType,
   type TweetFilters,
   type PaginationOptions,
 } from "./tweetStore.js";
@@ -186,6 +187,49 @@ app.post("/tweets/:id/reeval", async (req, res) => {
   }
 });
 
+// Set gold example status for a tweet
+app.post("/api/admin/tweets/:id/gold-example", (req, res) => {
+  const { type, password } = req.body as {
+    type?: string;
+    password?: string;
+  };
+
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const normalized = normalizeGoldExampleType(type);
+  if (type && !normalized) {
+    return res.status(400).send("Invalid type. Use GOOD, BAD, or omit to clear.");
+  }
+
+  const tweet = store.get(req.params.id);
+  if (!tweet) {
+    return res.status(404).send("Tweet not found.");
+  }
+
+  store.setGoldExample(req.params.id, normalized);
+  res.json({ success: true, goldExampleType: normalized });
+});
+
+// Get all gold examples
+app.get("/api/admin/gold-examples", (req, res) => {
+  const password = req.query.password as string;
+  if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: Invalid or missing password.");
+  }
+
+  const type = req.query.type as string | undefined;
+  const normalized = type ? normalizeGoldExampleType(type) : undefined;
+
+  if (type && !normalized) {
+    return res.status(400).send("Invalid type. Use GOOD or BAD.");
+  }
+
+  const examples = store.getGoldExamples(normalized ?? undefined);
+  res.json({ data: examples });
+});
+
 app.listen(PORT, () => {
   console.log(`Tweet moderation dashboard running on http://localhost:${PORT}`);
 });
@@ -241,6 +285,13 @@ function parseFilters(query: any): FilterParseResult {
 
 function normalizeDecision(value?: string): HumanDecision | null {
   if (value === "APPROVED" || value === "REJECTED") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeGoldExampleType(value?: string): GoldExampleType | null {
+  if (value === "GOOD" || value === "BAD") {
     return value;
   }
   return null;

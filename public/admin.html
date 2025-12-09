@@ -191,6 +191,7 @@
         <col /><!-- URL -->
         <col /><!-- Model Approved -->
         <col /><!-- Human Decision -->
+        <col /><!-- Gold Example -->
         <col /><!-- Created -->
         <col /><!-- Updated -->
         <col /><!-- Actions -->
@@ -204,6 +205,7 @@
           <th>URL</th>
           <th>Model Approved</th>
           <th>Human Decision</th>
+          <th>Gold Example</th>
           <th>Created</th>
           <th>Updated</th>
           <th>Actions</th>
@@ -325,7 +327,7 @@
       async function fetchTweets() {
         loadingIndicator.style.display = "inline";
         tweetsBody.innerHTML =
-          '<tr><td colspan="10" style="text-align:center">Loading...</td></tr>';
+          '<tr><td colspan="11" style="text-align:center">Loading...</td></tr>';
 
         const params = new URLSearchParams();
         if (filterApproved.value !== "all")
@@ -343,7 +345,7 @@
         try {
           const res = await fetch(`${API_BASE}?${params.toString()}`);
           if (res.status === 401) {
-            tweetsBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #ef4444;">Unauthorized: Please check your password.</td></tr>`;
+            tweetsBody.innerHTML = `<tr><td colspan="11" style="text-align:center; color: #ef4444;">Unauthorized: Please check your password.</td></tr>`;
             updatePagination({
               page: paginationState.page,
               pageSize: paginationState.pageSize,
@@ -360,7 +362,7 @@
           updatePagination(payload.pagination);
         } catch (err) {
           console.error(err);
-          tweetsBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
+          tweetsBody.innerHTML = `<tr><td colspan="11" style="text-align:center; color: #ef4444;">Error loading tweets: ${err.message}</td></tr>`;
         } finally {
           loadingIndicator.style.display = "none";
         }
@@ -411,6 +413,15 @@
                   }>REJECTED</option>
                 </select>
             </td>
+            <td>
+                <select class="gold-example-select" data-id="${escapeHtml(
+                  tweet.id
+                )}" data-prev-value="${escapeHtml(tweet.goldExampleType || "")}">
+                  <option value="" ${!tweet.goldExampleType ? "selected" : ""}>None</option>
+                  <option value="GOOD" ${tweet.goldExampleType === "GOOD" ? "selected" : ""}>GOOD</option>
+                  <option value="BAD" ${tweet.goldExampleType === "BAD" ? "selected" : ""}>BAD</option>
+                </select>
+            </td>
             <td>${escapeHtml(new Date(tweet.createdAt).toLocaleString())}</td>
             <td>${tweet.updatedAt ? escapeHtml(new Date(tweet.updatedAt).toLocaleString()) : "-"}</td>
             <td>
@@ -425,7 +436,7 @@
       }
 
       function showNoTweetsMessage(message = "No tweets found") {
-        tweetsBody.innerHTML = `<tr><td colspan="10" style="text-align:center">${message}</td></tr>`;
+        tweetsBody.innerHTML = `<tr><td colspan="11" style="text-align:center">${message}</td></tr>`;
       }
 
       function rowMatchesCurrentFilters(rowData) {
@@ -458,6 +469,54 @@
         if (!decision) return;
 
         saveDecision(select, decision);
+      }
+
+      function handleGoldExampleChange(event) {
+        const select = event.target;
+        if (!select.classList.contains("gold-example-select")) return;
+
+        const type = select.value || null;
+        saveGoldExample(select, type);
+      }
+
+      async function saveGoldExample(select, type) {
+        const id = select.dataset.id;
+        const password = passwordInput.value;
+        const previousValue = select.dataset.prevValue || "";
+
+        if (!password) {
+          alert("Please enter the admin password before saving.");
+          select.value = previousValue;
+          return;
+        }
+
+        select.disabled = true;
+
+        try {
+          const res = await fetch(
+            `/api/admin/tweets/${encodeURIComponent(id)}/gold-example`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type, password }),
+            }
+          );
+
+          if (!res.ok) {
+            const text = await res.text();
+            alert(`Error: ${text}`);
+            select.value = previousValue;
+            return;
+          }
+
+          select.dataset.prevValue = type || "";
+        } catch (err) {
+          console.error(err);
+          alert("Failed to save gold example status");
+          select.value = previousValue;
+        } finally {
+          select.disabled = false;
+        }
       }
 
       async function saveDecision(select, decision) {
@@ -726,6 +785,7 @@
       });
 
       tweetsBody.addEventListener("change", handleDecisionChange);
+      tweetsBody.addEventListener("change", handleGoldExampleChange);
       tweetsBody.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof HTMLButtonElement) && !target.classList.contains('expand-toggle')) return;
