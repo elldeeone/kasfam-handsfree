@@ -1,5 +1,9 @@
 import "dotenv/config";
-import { askTweetDecision, type FewShotExample } from "./gptClient.js";
+import {
+  askTweetDecision,
+  resetConversationMemory,
+  type FewShotExample,
+} from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
 import { createXClient } from "./xClient.js";
 
@@ -73,7 +77,8 @@ async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[
 
   if (source === "kaspa-news" || source === "both") {
     try {
-      const kaspaNewsTweets = await getKaspaNewsTweets(limit, tweetIds);
+      // Don't apply limit here - apply it at the end after combining sources
+      const kaspaNewsTweets = await getKaspaNewsTweets(undefined, tweetIds);
       log(`Fetched ${kaspaNewsTweets.length} tweets from kaspa.news`);
       addTweets(kaspaNewsTweets);
     } catch (error) {
@@ -100,6 +105,13 @@ async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[
   }
 
   log(`Total unique tweets: ${tweets.length}`);
+
+  // Apply limit after combining all sources
+  if (limit !== undefined && limit > 0 && tweets.length > limit) {
+    log(`Limiting to ${limit} tweets`);
+    return tweets.slice(0, limit);
+  }
+
   return tweets;
 }
 
@@ -179,11 +191,6 @@ function validateArguments(parsed: ParsedArgs): void {
   if (parsed.limit !== undefined && parsed.tweetIds !== undefined) {
     console.warn('Warning: both --limit and --tweet-id provided. --tweet-id takes precedence, --limit will be ignored.');
   }
-
-  // warn if using limit/tweetIds with x-api source
-  if (parsed.source === "x-api" && (parsed.limit !== undefined || parsed.tweetIds !== undefined)) {
-    console.warn('Warning: --limit and --tweet-id only apply to kaspa-news source, not x-api.');
-  }
 }
 
 function parseArgs(): ParsedArgs {
@@ -225,28 +232,53 @@ async function main() {
       log(`Loaded ${fewShotExamples.length} gold examples for few-shot learning`);
     }
 
-    for (let i = 0; i < tweets.length; i++) {
-      const tweet = tweets[i];
-      log(`Reading tweet ${i + 1} of ${tweets.length}`);
-
-      if (tweet.author.username == "kaspaunchained") {
-        log(`Skipping self-tweet`);
+    // Filter tweets that need processing
+    const tweetsToProcess: Tweet[] = [];
+    for (const tweet of tweets) {
+      if (tweet.author.username === "kaspaunchained") {
+        log(`Skipping self-tweet: ${tweet.id}`);
         continue;
       }
-
       if (store.hasModelDecision(tweet.id)) {
         log(`Skipping tweet ${tweet.id} (already has model decision)`);
         continue;
       }
+      tweetsToProcess.push(tweet);
+    }
 
-      log(`Sending question to GPT-5.1...`);
+    if (tweetsToProcess.length === 0) {
+      log("No new tweets to process.");
+      return;
+    }
+
+    log(`Found ${tweetsToProcess.length} tweets needing evaluation`);
+
+    // Reset conversation memory at start of session
+    // This allows the model to build context across tweets for better percentile calibration
+    resetConversationMemory();
+    log(`Initialized conversation memory for percentile calibration`);
+
+    // Process tweets one at a time (conversation memory accumulates context)
+    let approvedCount = 0;
+    let rejectedCount = 0;
+
+    for (let i = 0; i < tweetsToProcess.length; i++) {
+      const tweet = tweetsToProcess[i];
+      log(`\n[${i + 1}/${tweetsToProcess.length}] Evaluating tweet...`);
+
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      const { quote, approved, score } = await askTweetDecision(tweet.text, {
+
+      const { quote, approved, score, responseId } = await askTweetDecision(tweet.text, {
         examples: fewShotExamples,
+        useConversationMemory: true,
       });
 
+      log(`  [chain: ${responseId.slice(-8)}]`);  // Last 8 chars of response ID for brevity
+
       const payload: TweetDecisionInput = {
-        ...tweet,
+        id: tweet.id,
+        text: tweet.text,
+        url: tweet.url,
         quote: quote ?? "",
         approved,
         score,
@@ -254,23 +286,24 @@ async function main() {
 
       store.save(payload);
 
-      if (!approved) {
-        continue;
+      // Log result
+      if (approved) {
+        approvedCount++;
+        const qtMatch = quote.match(/QT:\s*(.+?)(?=\nPercentile:|$)/is);
+        const qt = qtMatch ? qtMatch[1].trim() : "";
+        log(`✓ APPROVED (Percentile: ${score})`);
+        log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
+        log(`  QT: ${qt}`);
+      } else {
+        rejectedCount++;
+        log(`✗ REJECTED: ${quote}`);
+        log(`  Tweet: ${tweet.text.slice(0, 60)}...`);
       }
-
-      log(`Question: ${tweet.text}`);
-
-      log(`Approved status: ${approved}`);
-
-      if (!quote) {
-        console.warn("No textual output returned by the model.");
-        process.exitCode = 2;
-        return;
-      }
-
-      log("=== GPT-5.1 Response ===");
-      log(quote);
     }
+
+    log(`\n━━━ Summary ━━━`);
+    log(`Processed ${tweetsToProcess.length} tweets`);
+    log(`Approved: ${approvedCount} | Rejected: ${rejectedCount}`);
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);

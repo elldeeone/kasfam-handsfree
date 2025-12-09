@@ -121,7 +121,10 @@ app.post("/api/admin/tweets/:id/process", async (req, res) => {
   }
 
   try {
-    const { quote, approved, score } = await askTweetDecision(tweet.text);
+    // Disable conversation memory for one-off server requests
+    const { quote, approved, score } = await askTweetDecision(tweet.text, {
+      useConversationMemory: false,
+    });
 
     store.save({
       id: tweet.id,
@@ -157,7 +160,10 @@ app.post("/tweets/:id/reeval", async (req, res) => {
   }
 
   try {
-    const { quote, approved, score } = await askTweetDecision(tweet.text);
+    // Disable conversation memory for one-off server requests
+    const { quote, approved, score } = await askTweetDecision(tweet.text, {
+      useConversationMemory: false,
+    });
 
     if (!approved) {
       return res.status(500).send("Re-evaluation resulted in rejection");
