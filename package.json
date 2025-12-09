@@ -19,7 +19,8 @@
   "dependencies": {
     "better-sqlite3": "^12.4.1",
     "express": "^4.21.1",
-    "openai": "^6.9.1"
+    "openai": "^6.9.1",
+    "twitter-api-v2": "^1.28.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

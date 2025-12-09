@@ -1,5 +1,6 @@
 import { askTweetDecision } from "./gptClient.js";
 import { createTweetStore, type TweetDecisionInput, type TweetRawInput } from "./tweetStore.js";
+import { createXClient } from "./xClient.js";
 
 type Tweet = {
   id: string;
@@ -10,9 +11,15 @@ type Tweet = {
   };
 };
 
+type TweetSource = "kaspa-news" | "x-api" | "both";
+
 type TweetStore = ReturnType<typeof createTweetStore>;
 
-async function getKaspaTweets(limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
+function log(msg: string) {
+  console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
+}
+
+async function getKaspaNewsTweets(limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
   const res = await fetch("https://kaspa.news/api/kaspa-tweets", {
     headers: { Accept: "application/json" },
   });
@@ -45,22 +52,80 @@ async function getKaspaTweets(limit?: number, tweetIds?: string[]): Promise<Twee
   return allTweets;
 }
 
-function log(msg: string) {
-  console.log(`\x1b[90m${new Date().toISOString()}\x1b[0m ${msg}`);
+async function getXApiTweets(): Promise<Tweet[]> {
+  const client = createXClient();
+  return await client.searchTweets();
+}
+
+async function getTweets(source: TweetSource, limit?: number, tweetIds?: string[]): Promise<Tweet[]> {
+  const tweets: Tweet[] = [];
+  const seenIds = new Set<string>();
+
+  const addTweets = (newTweets: Tweet[]) => {
+    for (const tweet of newTweets) {
+      if (!seenIds.has(tweet.id)) {
+        seenIds.add(tweet.id);
+        tweets.push(tweet);
+      }
+    }
+  };
+
+  if (source === "kaspa-news" || source === "both") {
+    try {
+      const kaspaNewsTweets = await getKaspaNewsTweets(limit, tweetIds);
+      log(`Fetched ${kaspaNewsTweets.length} tweets from kaspa.news`);
+      addTweets(kaspaNewsTweets);
+    } catch (error) {
+      if (source === "both") {
+        console.warn(`Warning: Failed to fetch from kaspa.news: ${error}`);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (source === "x-api" || source === "both") {
+    try {
+      const xApiTweets = await getXApiTweets();
+      log(`Fetched ${xApiTweets.length} tweets from X API`);
+      addTweets(xApiTweets);
+    } catch (error) {
+      if (source === "both") {
+        console.warn(`Warning: Failed to fetch from X API: ${error}`);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  log(`Total unique tweets: ${tweets.length}`);
+  return tweets;
 }
 
 type ParsedArgs = {
+  source: TweetSource;
   limit: number | undefined;
   tweetIds: string[] | undefined;
 };
 
 function extractArguments(args: string[]): ParsedArgs {
-  // how many tweets to send through to gpt for 'processing', default to no limit (all tweets)
+  let source: TweetSource = "kaspa-news";
   let limit: number | undefined = undefined;
   let tweetIds: string[] | undefined = undefined;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--limit') {
+    if (args[i] === '--source') {
+      if (i + 1 >= args.length) {
+        throw new Error('--source requires a value');
+      }
+      const value = args[i + 1];
+      if (value === "kaspa-news" || value === "x-api" || value === "both") {
+        source = value;
+      } else {
+        throw new Error(`Invalid source: ${value}. Use: kaspa-news, x-api, or both`);
+      }
+      i++;
+    } else if (args[i] === '--limit') {
       if (i + 1 >= args.length) {
         throw new Error('--limit requires a value');
       }
@@ -70,7 +135,6 @@ function extractArguments(args: string[]): ParsedArgs {
       if (i + 1 >= args.length) {
         throw new Error('--tweet-id requires a value');
       }
-
       tweetIds = args[i + 1].split(',').map(id => id.trim()).filter(id => id.length > 0);
       i++;
     } else if (args[i].startsWith('--')) {
@@ -81,7 +145,7 @@ function extractArguments(args: string[]): ParsedArgs {
     }
   }
 
-  return { limit, tweetIds };
+  return { source, limit, tweetIds };
 }
 
 function validateArguments(parsed: ParsedArgs): void {
@@ -106,6 +170,11 @@ function validateArguments(parsed: ParsedArgs): void {
   if (parsed.limit !== undefined && parsed.tweetIds !== undefined) {
     console.warn('Warning: both --limit and --tweet-id provided. --tweet-id takes precedence, --limit will be ignored.');
   }
+
+  // warn if using limit/tweetIds with x-api source
+  if (parsed.source === "x-api" && (parsed.limit !== undefined || parsed.tweetIds !== undefined)) {
+    console.warn('Warning: --limit and --tweet-id only apply to kaspa-news source, not x-api.');
+  }
 }
 
 function parseArgs(): ParsedArgs {
@@ -116,12 +185,13 @@ function parseArgs(): ParsedArgs {
 }
 
 async function main() {
-  const { limit, tweetIds } = parseArgs();
+  const { source, limit, tweetIds } = parseArgs();
+  log(`Using source: ${source}`);
 
   let store: TweetStore | null = null;
   try {
     store = createTweetStore();
-    const tweets = await getKaspaTweets(limit, tweetIds);
+    const tweets = await getTweets(source, limit, tweetIds);
 
     // save all tweets to db first (without model decision)
     for (const tweet of tweets) {
