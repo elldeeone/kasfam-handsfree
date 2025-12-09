@@ -218,6 +218,7 @@ async function main() {
     const fewShotExamples: FewShotExample[] = goldExamples.map(ex => ({
       tweetText: ex.text,
       response: ex.quote,
+      correction: ex.goldExampleCorrection ?? undefined,
       type: ex.goldExampleType!,
     }));
     if (fewShotExamples.length > 0) {

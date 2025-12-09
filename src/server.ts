@@ -189,9 +189,10 @@ app.post("/tweets/:id/reeval", async (req, res) => {
 
 // Set gold example status for a tweet
 app.post("/api/admin/tweets/:id/gold-example", (req, res) => {
-  const { type, password } = req.body as {
+  const { type, password, correction } = req.body as {
     type?: string;
     password?: string;
+    correction?: string;
   };
 
   if (ADMIN_PASSWORD && password !== ADMIN_PASSWORD) {
@@ -203,13 +204,20 @@ app.post("/api/admin/tweets/:id/gold-example", (req, res) => {
     return res.status(400).send("Invalid type. Use GOOD, BAD, or omit to clear.");
   }
 
+  // BAD examples require a correction (the rejection reason)
+  if (normalized === "BAD" && !correction) {
+    return res.status(400).send("BAD examples require a correction (rejection reason).");
+  }
+
   const tweet = store.get(req.params.id);
   if (!tweet) {
     return res.status(404).send("Tweet not found.");
   }
 
-  store.setGoldExample(req.params.id, normalized);
-  res.json({ success: true, goldExampleType: normalized });
+  // Only store correction for BAD examples, clear it otherwise
+  const correctionToStore = normalized === "BAD" ? correction : null;
+  store.setGoldExample(req.params.id, normalized, correctionToStore);
+  res.json({ success: true, goldExampleType: normalized, goldExampleCorrection: correctionToStore });
 });
 
 // Get gold example counts (public)

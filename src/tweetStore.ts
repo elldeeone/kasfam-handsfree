@@ -16,6 +16,7 @@ export type TweetRecord = {
   updatedAt: string | null;
   humanDecision: HumanDecision | null;
   goldExampleType: GoldExampleType | null;
+  goldExampleCorrection: string | null;
 };
 
 export type TweetRawInput = {
@@ -157,7 +158,7 @@ export function createTweetStore() {
       `;
 
       const sql = `
-        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType
+        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
         ${baseQuery}
         ORDER BY datetime(COALESCE(updatedAt, createdAt)) DESC
         LIMIT @limit OFFSET @offset
@@ -178,6 +179,7 @@ export function createTweetStore() {
         updatedAt: string | null;
         humanDecision: HumanDecision | null;
         goldExampleType: GoldExampleType | null;
+        goldExampleCorrection: string | null;
       }>;
 
       const totalRow = db
@@ -191,6 +193,7 @@ export function createTweetStore() {
         updatedAt: row.updatedAt ?? null,
         humanDecision: row.humanDecision ?? null,
         goldExampleType: row.goldExampleType ?? null,
+        goldExampleCorrection: row.goldExampleCorrection ?? null,
       }));
 
       return {
@@ -204,7 +207,7 @@ export function createTweetStore() {
       const row = db
         .prepare(
           `
-        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType
+        SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
         FROM tweets
         WHERE id = @id
       `
@@ -221,6 +224,7 @@ export function createTweetStore() {
             updatedAt: string | null;
             humanDecision: HumanDecision | null;
             goldExampleType: GoldExampleType | null;
+            goldExampleCorrection: string | null;
           }
         | undefined;
 
@@ -235,6 +239,7 @@ export function createTweetStore() {
         updatedAt: row.updatedAt ?? null,
         humanDecision: row.humanDecision ?? null,
         goldExampleType: row.goldExampleType ?? null,
+        goldExampleCorrection: row.goldExampleCorrection ?? null,
       };
     },
     updateHumanDecision(id: string, decision: HumanDecision | null) {
@@ -256,20 +261,22 @@ export function createTweetStore() {
         .get({ id });
       return !!row;
     },
-    setGoldExample(id: string, type: GoldExampleType | null) {
+    setGoldExample(id: string, type: GoldExampleType | null, correction?: string | null) {
       db.prepare(
         `
         UPDATE tweets
-        SET goldExampleType = @type, updatedAt = datetime('now')
+        SET goldExampleType = @type,
+            goldExampleCorrection = @correction,
+            updatedAt = datetime('now')
         WHERE id = @id
       `
-      ).run({ id, type });
+      ).run({ id, type, correction: correction ?? null });
     },
     getGoldExamples(type?: GoldExampleType): TweetRecord[] {
       const sql = type
-        ? `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType
+        ? `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
            FROM tweets WHERE goldExampleType = @type ORDER BY updatedAt DESC`
-        : `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType
+        : `SELECT id, text, quote, url, approved, score, createdAt, updatedAt, humanDecision, goldExampleType, goldExampleCorrection
            FROM tweets WHERE goldExampleType IS NOT NULL ORDER BY goldExampleType, updatedAt DESC`;
 
       const rows = db.prepare(sql).all(type ? { type } : {}) as Array<{
@@ -283,6 +290,7 @@ export function createTweetStore() {
         updatedAt: string | null;
         humanDecision: HumanDecision | null;
         goldExampleType: GoldExampleType | null;
+        goldExampleCorrection: string | null;
       }>;
 
       return rows.map((row) => ({
@@ -292,6 +300,7 @@ export function createTweetStore() {
         updatedAt: row.updatedAt ?? null,
         humanDecision: row.humanDecision ?? null,
         goldExampleType: row.goldExampleType ?? null,
+        goldExampleCorrection: row.goldExampleCorrection ?? null,
       }));
     },
     close() {

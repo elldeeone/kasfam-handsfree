@@ -1,6 +1,7 @@
 export type FewShotExample = {
   tweetText: string;
-  response: string;  // The full "Approved.\nQT: ...\nScore: X" or "Rejected: reason"
+  response: string;  // The full "Approved.\nQT: ...\nScore: X" for GOOD examples
+  correction?: string;  // The correction "Rejected: reason" for BAD examples
   type: "GOOD" | "BAD";
 };
 
@@ -160,9 +161,11 @@ these are real examples of past decisions. use them to calibrate your bar.
 `;
       for (let i = 0; i < badExamples.length; i++) {
         const ex = badExamples[i];
+        // Use correction if available, otherwise fall back to response
+        const decision = ex.correction || ex.response;
         examplesSection += `example ${i + 1}:
 tweet: "${ex.tweetText.slice(0, 200)}${ex.tweetText.length > 200 ? "..." : ""}"
-decision: ${ex.response}
+decision: ${decision}
 
 `;
       }
